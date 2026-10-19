@@ -478,6 +478,7 @@ export interface TaskInfo {
 	occurrence_past_horizon?: string; // ISO duration override for rolling materialization past horizon
 	occurrence_future_horizon?: string; // ISO duration override for rolling materialization future horizon
 	completedDate?: string; // Date (YYYY-MM-DD) when task was marked as done
+	completedAt?: string; // Local date-time (YYYY-MM-DDTHH:mm:ss) when task was marked as done
 	timeEstimate?: number; // Estimated time in minutes
 	timeEntries?: TimeEntry[]; // Individual time tracking sessions
 	totalTrackedTime?: number; // Total tracked time in minutes (calculated from timeEntries)

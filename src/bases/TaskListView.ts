@@ -19,6 +19,7 @@ import { ReminderModal } from "../modals/ReminderModal";
 import {
 	getDatePart,
 	getTimePart,
+	getCurrentDateTimeString,
 	getCurrentTimestamp,
 	parseDateToUTC,
 	createUTCDateFromLocalCalendarDate,
@@ -1672,6 +1673,7 @@ export class TaskListView extends BasesViewBase {
 										this.plugin.statusManager.isCompletedStatus(status),
 									getTimestamp: getCurrentTimestamp,
 									getCompletedDate: () => new Date().toISOString().split("T")[0],
+									getCompletedAt: () => getCurrentDateTimeString(),
 									coerceGroupKeyForTask: (property, value) =>
 										this.coerceGroupKeyForFrontmatter(property, value),
 									getClearedTaskValue: (property) =>
@@ -2405,6 +2407,7 @@ export class TaskListView extends BasesViewBase {
 								this.plugin.statusManager.isCompletedStatus(status),
 							getTimestamp: getCurrentTimestamp,
 							getCompletedDate: () => new Date().toISOString().split("T")[0],
+							getCompletedAt: () => getCurrentDateTimeString(),
 							coerceGroupKeyForTask: (property, value) =>
 								this.coerceGroupKeyForFrontmatter(property, value),
 							getClearedTaskValue: (property) =>

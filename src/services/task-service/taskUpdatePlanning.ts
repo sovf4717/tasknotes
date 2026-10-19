@@ -72,6 +72,7 @@ export interface BuildUpdatedTaskFromPlanInput {
 	newPath: string;
 	dateModified: string;
 	currentDateString: string;
+	currentDateTimeString?: string;
 	normalizedDetails: string | null;
 	finalTags?: string[];
 	isCompletedStatus: (status: string) => boolean;
@@ -467,6 +468,7 @@ export function buildUpdatedTaskFromPlan({
 	newPath,
 	dateModified,
 	currentDateString,
+	currentDateTimeString,
 	normalizedDetails,
 	finalTags,
 	isCompletedStatus,
@@ -492,8 +494,12 @@ export function buildUpdatedTaskFromPlan({
 			if (!originalTask.completedDate) {
 				updatedTask.completedDate = currentDateString;
 			}
+			if (!originalTask.completedAt && currentDateTimeString) {
+				updatedTask.completedAt = currentDateTimeString;
+			}
 		} else {
 			updatedTask.completedDate = undefined;
+			updatedTask.completedAt = undefined;
 		}
 	}
 

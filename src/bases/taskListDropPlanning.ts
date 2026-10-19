@@ -51,6 +51,7 @@ export interface BuildTaskListDropSideEffectTaskOptions {
 	isCompletedStatus: (status: string) => boolean;
 	getTimestamp: () => string;
 	getCompletedDate: () => string;
+	getCompletedAt?: () => string;
 	coerceGroupKeyForTask?: (property: string, groupKey: string) => string | number | boolean;
 	getClearedTaskValue?: (property: keyof FieldMapping) => unknown;
 }
@@ -136,6 +137,7 @@ export function buildTaskListDropSideEffectTask(
 		isCompletedStatus,
 		getTimestamp,
 		getCompletedDate,
+		getCompletedAt,
 		coerceGroupKeyForTask,
 		getClearedTaskValue,
 	}: BuildTaskListDropSideEffectTaskOptions
@@ -168,17 +170,15 @@ export function buildTaskListDropSideEffectTask(
 	}
 
 	updatedTask.dateModified = getTimestamp();
-
-	if (taskProperty === "status" && !originalTask.recurrence) {
-		if (
-			plan.normalizedTargetGroupKey !== null &&
-			isCompletedStatus(plan.normalizedTargetGroupKey)
-		) {
-			updatedTask.completedDate = getCompletedDate();
-		} else {
-			updatedTask.completedDate = undefined;
+		if (taskProperty === "status" && !originalTask.recurrence) {
+			if (plan.normalizedTargetGroupKey !== null && isCompletedStatus(plan.normalizedTargetGroupKey)) {
+				updatedTask.completedDate = getCompletedDate();
+				updatedTask.completedAt = getCompletedAt?.();
+			} else {
+				updatedTask.completedDate = undefined;
+				updatedTask.completedAt = undefined;
+			}
 		}
-	}
 
 	return updatedTask;
 }

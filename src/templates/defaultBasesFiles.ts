@@ -337,6 +337,8 @@ function generateAllFormulas(plugin: TaskNotesPlugin): Record<string, string> {
 	const scheduledDay = formatBasesDateDayExpression(scheduledProperty);
 	const timeEntryStartDay = formatBasesDateDayExpression("value.startTime");
 	const nextDateStartOfDay = 'date(date(formula.nextDate).format("YYYY-MM-DD"))';
+	// Fixed property written with a local date-time stamp when a task is marked complete
+	const completedAtProperty = getPropertyName(mapPropertyToBasesProperty("completedAt", plugin));
 
 	return {
 		// Priority weight for sorting (lower = higher priority)
@@ -348,6 +350,9 @@ function generateAllFormulas(plugin: TaskNotesPlugin): Record<string, string> {
 
 		// Compact due date countdown for list/agenda displays
 		dueIn: `if(${dueIsEmpty}, "", if(formula.daysUntilDue == 0, "Today", if(formula.daysUntilDue == 1, "1 day", if(formula.daysUntilDue > 1, formula.daysUntilDue + " days", if(formula.daysUntilDue == -1, "1 day overdue", formula.daysUntilDue * -1 + " days overdue")))))`,
+
+		// Completion time of day (HH:mm) recorded when a task was marked complete
+		completedAtTime: `if(${completedAtProperty}, date(${completedAtProperty}).format("HH:mm"), "")`,
 
 		// Days until scheduled (negative = past, positive = days remaining)
 		daysUntilScheduled: `if(${scheduledHasValue}, ((number(date(${scheduledProperty})) - number(today())) / 86400000).floor(), null)`,
@@ -901,8 +906,14 @@ ${orderYaml}
 properties:
   formula.dueIn:
     displayName: Due in
+  formula.completedAtTime:
+    displayName: Completed at
 `
-				: "";
+				: `
+properties:
+  formula.completedAtTime:
+    displayName: Completed at
+`;
 
 			return `# Agenda
 

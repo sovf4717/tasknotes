@@ -1,5 +1,6 @@
 import type { TaskInfo } from "../types";
 import { clearStaticStyleClasses } from "../utils/staticStyleClasses";
+import { getCurrentDateTimeString } from "../utils/dateUtils";
 import {
 	applyGroupPropertyMutation,
 	moveGroupListValue,
@@ -545,7 +546,14 @@ export function planKanbanDropSideEffect({
 
 	const statusValue = changedValues.get("status");
 	if (changedValues.has("status") && !originalTask.recurrence) {
-		updatedTask.completedDate =
+	const statusIsCompleted =
+		typeof statusValue === "string" && isCompletedStatus(statusValue);
+	updatedTask.completedDate = statusIsCompleted
+		? new Date().toISOString().split("T")[0]
+		: undefined;
+	updatedTask.completedAt = statusIsCompleted
+		? getCurrentDateTimeString()
+		: undefined;
 			typeof statusValue === "string" && isCompletedStatus(statusValue)
 				? new Date().toISOString().split("T")[0]
 				: undefined;

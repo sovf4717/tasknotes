@@ -28,13 +28,14 @@ import {
 	resetMarkdownCheckboxes,
 } from "../utils/helpers";
 import { formatDependencyLink, resolveDependencyEntry } from "../utils/dependencyUtils";
-import { getProjectDisplayName, parseLinkToPath } from "../utils/linkUtils";
 import {
 	formatDateForStorage,
 	getCurrentDateString,
+	getCurrentDateTimeString,
 	getCurrentTimestamp,
 	getDatePart,
 } from "../utils/dateUtils";
+import { getProjectDisplayName, parseLinkToPath } from "../utils/linkUtils";
 import { getNextUncompletedOccurrence, updateToNextScheduledOccurrence } from "../core/recurrence";
 import { processFolderTemplate, TaskTemplateData, FolderTemplateOptions } from "../utils/folderTemplateProcessor";
 
@@ -52,6 +53,7 @@ import { runTaskPropertyChangeSideEffects } from "./task-service/taskPropertyCha
 import {
 	applyTaskPropertyFrontmatterChange,
 	buildTaskPropertyUpdatePlan,
+	COMPLETED_AT_PROPERTY,
 	updateCompletedDateFrontmatter,
 } from "./task-service/taskPropertyUpdate";
 import {
@@ -617,6 +619,7 @@ export class TaskService {
 				value,
 				currentTimestamp: getCurrentTimestamp(),
 				currentDateString: completionDateString,
+				currentDateTimeString: getCurrentDateTimeString(),
 				normalizeStatusValue: (candidate) => this.normalizeStatusValue(candidate),
 				isCompletedStatus: (status) => this.plugin.statusManager.isCompletedStatus(status),
 			});
@@ -692,11 +695,13 @@ export class TaskService {
 					dateModified: updatePlan.dateModified,
 					dateModifiedField,
 					completedDateField,
+					completedAtField: COMPLETED_AT_PROPERTY,
 					isRecurring: !!freshTask.recurrence,
 					normalizeStatusValue: (candidate) => this.normalizeStatusValue(candidate),
 					isCompletedStatus: (status) =>
 						this.plugin.statusManager.isCompletedStatus(status),
 					currentDateString: completionDateString,
+					currentDateTimeString: getCurrentDateTimeString(),
 				});
 
 				this.writeOptionalFrontmatterField(
@@ -2246,13 +2251,16 @@ export class TaskService {
 		}
 
 		const completedDateField = this.plugin.fieldMapper.toUserField("completedDate");
+
 		updateCompletedDateFrontmatter(
 			frontmatter,
 			newStatus,
 			isRecurring,
 			completedDateField,
 			(status) => this.plugin.statusManager.isCompletedStatus(status),
-			getCurrentDateString()
+			getCurrentDateString(),
+			COMPLETED_AT_PROPERTY,
+			getCurrentDateTimeString()
 		);
 	}
 

@@ -8,7 +8,11 @@ import {
 	isTitleRepresentedByFilename,
 	sanitizeForFilename,
 } from "../../utils/filenameGenerator";
-import { getCurrentDateString, getCurrentTimestamp } from "../../utils/dateUtils";
+import {
+	getCurrentDateString,
+	getCurrentDateTimeString,
+	getCurrentTimestamp,
+} from "../../utils/dateUtils";
 import {
 	applyTaskUpdateFrontmatterChange,
 	buildTaskUpdateRecurrenceUpdates,
@@ -146,6 +150,8 @@ export class TaskUpdateService {
 			const dateModified = getCurrentTimestamp();
 			const currentDateString =
 				taskUpdates.status !== undefined ? getCurrentDateString() : "";
+			const currentDateTimeString =
+				taskUpdates.status !== undefined ? getCurrentDateTimeString() : "";
 
 			await processVaultFrontMatter(runtime.app, file, (frontmatter) => {
 				// Rebase the caller's named changes on the bytes Obsidian is about
@@ -229,6 +235,7 @@ export class TaskUpdateService {
 				newPath,
 				dateModified,
 				currentDateString,
+				currentDateTimeString,
 				normalizedDetails,
 				finalTags,
 				isCompletedStatus: (status) => runtime.statusManager.isCompletedStatus(status),
