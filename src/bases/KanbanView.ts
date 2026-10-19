@@ -17,6 +17,7 @@ import { stringifyUnknown } from "../utils/stringUtils";
 import {
 	stripPropertyPrefix,
 	isSortOrderInSortConfig,
+	getSortOrderDirection,
 	prepareSortOrderUpdate,
 	applySortOrderPlan,
 	DropOperationQueue,
@@ -1825,13 +1826,6 @@ export class KanbanView extends BasesViewBase {
 				"aria-label": label,
 			},
 		});
-		const icon = empty.createSpan({
-			cls: "kanban-view__empty-cell-icon",
-			attr: {
-				"aria-hidden": "true",
-			},
-		});
-		setIcon(icon, "plus-circle");
 		empty.createSpan({
 			cls: "kanban-view__empty-cell-text",
 			text: noTasksLabel,
@@ -3706,6 +3700,10 @@ export class KanbanView extends BasesViewBase {
 									taskInfoCache: this.taskInfoCache,
 									visibleTaskPaths,
 									candidateTaskPaths,
+									sortDirection: getSortOrderDirection(
+										this.dataAdapter,
+										sortOrderField
+									),
 								}
 							);
 							if (sortOrderPlan.sortOrder === null) {
