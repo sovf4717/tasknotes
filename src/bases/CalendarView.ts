@@ -465,6 +465,11 @@ export class CalendarView extends BasesViewBase {
 	private _isRendering = false;
 	private _pendingRender = false;
 
+	// Pending daily-note date to navigate to after next render
+	private _pendingDailyNoteDate: string | null = null;
+
+	// Flag to skip debounce for user-initiated actions (timeblock creation, drag/drop, etc.)
+
 	// Flag to skip debounce for user-initiated actions (timeblock creation, drag/drop, etc.)
 	private _expectingImmediateUpdate = false;
 
@@ -1472,7 +1477,15 @@ export class CalendarView extends BasesViewBase {
 		this.scheduleDailyNoteHeaderLinkUpdate();
 		this.scheduleRefreshButtonIconUpdate();
 
-		// Apply the last-daily-note date if one is tracked (e.g. user opened a diary file)
+		// Re-apply pending daily-note navigation (e.g. if the calendar was recreated by a Bases data update)
+		const pendingDate = this._pendingDailyNoteDate || this.plugin.lastDailyNoteDate;
+		if (pendingDate) {
+			const win = this.containerEl.ownerDocument.defaultView || window;
+			win.setTimeout(() => {
+				this.navigateToDailyNote(pendingDate);
+				this._pendingDailyNoteDate = null;
+			}, 150);
+		}
 		if (this.plugin.lastDailyNoteDate) {
 			const win = this.containerEl.ownerDocument.defaultView || window;
 			win.setTimeout(() => this.navigateToDailyNote(this.plugin.lastDailyNoteDate!), 150);
@@ -3094,7 +3107,15 @@ export class CalendarView extends BasesViewBase {
 	 * Called when the user opens a daily-note file so the agenda
 	 * focuses on that day's tasks.
 	 */
+	/**
+	 * Navigate this calendar to the given daily-note date (YYYY-MM-DD).
+	 * Switches to the list view and navigates to that date.
+	 * Also stores the date so it is re-applied after Bases data updates.
+	 */
 	navigateToDailyNote(dateStr: string): void {
+		// Store for post-render re-application
+		this._pendingDailyNoteDate = dateStr;
+
 		if (!this.calendar) return;
 		try {
 			const date = new Date(dateStr + "T00:00:00");
@@ -3104,31 +3125,6 @@ export class CalendarView extends BasesViewBase {
 			const currentView = this.calendar.view?.type;
 			if (currentView !== "listWeek") {
 				this.calendar.changeView("listWeek");
-			}
-
-			// Show only 1 day in the list view
-			const fullCal = this.calendar as unknown as {
-				options?: { views?: Record<string, Record<string, unknown>> };
-				setOption(name: string, value: unknown): void;
-			};
-			const views = fullCal.options?.views;
-			if (views?.listWeek) {
-				fullCal.setOption("views", {
-					...views,
-					listWeek: {
-						...views.listWeek,
-						duration: { days: 1 },
-					},
-				});
-			}
-			if (views?.listWeek) {
-				this.calendar.setOption("views", {
-					...(views as Record<string, unknown>),
-					listWeek: {
-						...(views.listWeek as Record<string, unknown>),
-						duration: { days: 1 },
-					},
-				});
 			}
 
 			this.calendar.gotoDate(date);
