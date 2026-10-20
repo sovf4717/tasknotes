@@ -315,42 +315,19 @@ export default class TaskNotesPlugin extends Plugin {
 		await initializePluginRuntime(this);
 		this.registerTaskNotesFileMenuActions();
 
-		// Navigate open calendar/agenda views to the daily-note date when a
-		// date-named file (YYYY-MM-DD.md) becomes the active leaf.
+		// Navigate open calendar/agenda views to today's date when a diary note
+		// becomes the active leaf. Diary notes live in a diary folder and their
+		// filenames do not contain a date, so the current date is used.
 		this.registerEvent(
 			this.app.workspace.on("active-leaf-change", () => {
-				this.tryNavigateToDailyNote();
+				this.tryNavigateToDiaryNote();
 			})
 		);
 		// Also catch file opens (covers split-view cases where active-leaf-change
 		// may not fire for the diary file).
 		this.registerEvent(
 			this.app.workspace.on("file-open", () => {
-				this.tryNavigateToDailyNote();
-			})
-		);
-	}
-
-	/** Check the active file for a daily-note date and navigate calendars to it. */
-	private tryNavigateToDailyNote(): void {
-		const activeFile = this.app.workspace.getActiveFile();
-		if (!activeFile) return;
-		const name = activeFile.name.replace(/\.md$/i, "");
-		const dailyNoteMatch = name.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-		if (!dailyNoteMatch) return;
-		const dateStr = `${dailyNoteMatch[1]}-${dailyNoteMatch[2]}-${dailyNoteMatch[3]}`;
-		this.lastDailyNoteDate = dateStr;
-		navigateAllCalendarsToDailyNote(dateStr);
-		this.registerEvent(
-			this.app.workspace.on("active-leaf-change", () => {
-				const activeFile = this.app.workspace.getActiveFile();
-				if (!activeFile) return;
-				const name = activeFile.name.replace(/\.md$/i, "");
-				const dailyNoteMatch = name.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-				if (!dailyNoteMatch) return;
-				const dateStr = `${dailyNoteMatch[1]}-${dailyNoteMatch[2]}-${dailyNoteMatch[3]}`;
-				this.lastDailyNoteDate = dateStr;
-				navigateAllCalendarsToDailyNote(dateStr);
+				this.tryNavigateToDiaryNote();
 			})
 		);
 
@@ -372,6 +349,30 @@ export default class TaskNotesPlugin extends Plugin {
 		this.emitter.trigger(TASKNOTES_RUNTIME_LIFECYCLE_RAW_EVENTS.ready, {
 			timestamp: new Date().toISOString(),
 		});
+	}
+
+	/** Folder whose notes are treated as diary/daily notes. */
+	private static readonly DIARY_FOLDER_NAME = "\u65e5\u8bb0";
+
+	/**
+	 * Check whether the active file is a diary note and navigate calendars to
+	 * today's date. Diary notes are identified by their folder because their
+	 * filenames do not contain a date.
+	 */
+	private tryNavigateToDiaryNote(): void {
+		const activeFile = this.app.workspace.getActiveFile();
+		if (!activeFile) return;
+		if (!this.isDiaryNotePath(activeFile.path)) return;
+
+		const dateStr = format(new Date(), "yyyy-MM-dd");
+		this.lastDailyNoteDate = dateStr;
+		navigateAllCalendarsToDailyNote(dateStr);
+	}
+
+	isDiaryNotePath(path: string): boolean {
+		const segments = path.split("/");
+		segments.pop();
+		return segments.some((segment) => segment === TaskNotesPlugin.DIARY_FOLDER_NAME);
 	}
 
 	private registerTaskNotesFileMenuActions(): void {

@@ -655,7 +655,6 @@ export class CalendarView extends BasesViewBase {
 				win.setTimeout(() => this.navigateToDailyNote(dateStr), 150);
 			})
 		);
-		registerCalendarView(this);
 	}
 
 	/**
@@ -1477,35 +1476,28 @@ export class CalendarView extends BasesViewBase {
 		this.scheduleDailyNoteHeaderLinkUpdate();
 		this.scheduleRefreshButtonIconUpdate();
 
-		// After calendar creation, navigate to the pending daily-note date if set.
-		// Also proactively scan open leaves for daily-note files so it works
-		// even when the diary file was already open from a previous session.
+		// After calendar creation, navigate to the pending daily-note date if set,
+		// or to today's date when a diary note is already open.
 		const win = this.containerEl.ownerDocument.defaultView || window;
 		win.setTimeout(() => {
 			let targetDate = this._pendingDailyNoteDate || this.plugin.lastDailyNoteDate;
 
-			// If no tracked date, scan all open leaves for a daily-note file
+			// If no tracked date, scan open leaves for a diary note
 			if (!targetDate) {
 				this.app.workspace.iterateAllLeaves?.((leaf) => {
 					if (targetDate) return;
-					const file = (leaf as { view?: { file?: { name?: string } } }).view?.file;
-					if (!file?.name) return;
-					const m = file.name.replace(/\.md$/i, "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
-					if (m) {
-						targetDate = `${m[1]}-${m[2]}-${m[3]}`;
-					}
+					const path = (leaf as { view?: { file?: { path?: string } } }).view?.file?.path;
+					if (!path || !this.plugin.isDiaryNotePath(path)) return;
+					targetDate = format(new Date(), "yyyy-MM-dd");
 				});
 			}
 
 			if (targetDate) {
+				this.plugin.lastDailyNoteDate = targetDate;
 				this.navigateToDailyNote(targetDate);
 				this._pendingDailyNoteDate = null;
 			}
 		}, 200);
-		if (this.plugin.lastDailyNoteDate) {
-			const win = this.containerEl.ownerDocument.defaultView || window;
-			win.setTimeout(() => this.navigateToDailyNote(this.plugin.lastDailyNoteDate!), 150);
-		}
 	}
 
 	private updateBasesSortIndexes(taskNotes: TaskInfo[]): void {
@@ -3123,16 +3115,20 @@ export class CalendarView extends BasesViewBase {
 	 * calendar recreations.
 	 */
 	navigateToDailyNote(dateStr: string): void {
-		this._pendingDailyNoteDate = dateStr;
-
-		if (!this.calendar) return;
+		// Remember the date until the calendar exists, so it can be applied once
+		// initialisation finishes. Re-applying on every render would override a
+		// view the user picked afterwards.
+		if (!this.calendar) {
+			this._pendingDailyNoteDate = dateStr;
+			return;
+		}
 		try {
 			const date = new Date(dateStr + "T00:00:00");
 			if (Number.isNaN(date.getTime())) return;
-			// Switch to single-day view so only that day's tasks are shown
+			// Switch to the list view so the day's tasks are listed compactly
 			const currentView = this.calendar.view?.type;
-			if (currentView !== "timeGridDay") {
-				this.calendar.changeView("timeGridDay");
+			if (currentView !== "listWeek") {
+				this.calendar.changeView("listWeek");
 			}
 			this.calendar.gotoDate(date);
 		} catch (e) {

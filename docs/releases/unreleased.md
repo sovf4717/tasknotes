@@ -52,3 +52,5 @@ When a change has user-facing documentation, include a canonical tasknotes.dev l
 - Kanban drops into the empty ("None") column now clear the grouping property instead of writing the text "None", and dropping onto a list-valued column no longer overwrites the list when the task's source column is unknown.
 
 - Manual reordering in Task List and Kanban views sorted by manual order in descending direction now places a task on the correct side of its neighbour when the group contains only one other task.
+
+- Calendar and agenda views now navigate to today's date in list view when a note in the diary folder is opened. Diary notes are detected by their folder because their filenames do not contain a date. Calendars also stop overriding a manually chosen view with two competing deferred navigations.
