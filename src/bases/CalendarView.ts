@@ -642,13 +642,9 @@ export class CalendarView extends BasesViewBase {
 				if (activeViewEl && !activeViewEl.contains(this.containerEl)) {
 					return;
 				}
-				// Find the most-recently-active markdown file (could be in another tab)
-				const activeFile = this.app.workspace.getActiveFile();
-				if (!activeFile) return;
-				const name = activeFile.name.replace(/\.md$/i, "");
-				const m = name.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-				if (!m) return;
-				const dateStr = `${m[1]}-${m[2]}-${m[3]}`;
+				// Use the plugin's tracked last-daily-note date (set by main.ts listener)
+				const dateStr = this.plugin.lastDailyNoteDate;
+				if (!dateStr) return;
 				// Defer slightly so FullCalendar has finished its own render cycle
 				const win = this.containerEl.ownerDocument.defaultView || window;
 				win.setTimeout(() => this.navigateToDailyNote(dateStr), 150);
@@ -1475,6 +1471,12 @@ export class CalendarView extends BasesViewBase {
 		this.scheduleTodayColumnWidthUpdate();
 		this.scheduleDailyNoteHeaderLinkUpdate();
 		this.scheduleRefreshButtonIconUpdate();
+
+		// Apply the last-daily-note date if one is tracked (e.g. user opened a diary file)
+		if (this.plugin.lastDailyNoteDate) {
+			const win = this.containerEl.ownerDocument.defaultView || window;
+			win.setTimeout(() => this.navigateToDailyNote(this.plugin.lastDailyNoteDate!), 150);
+		}
 	}
 
 	private updateBasesSortIndexes(taskNotes: TaskInfo[]): void {

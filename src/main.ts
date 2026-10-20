@@ -143,6 +143,9 @@ export default class TaskNotesPlugin extends Plugin {
 
 	// Performance optimization utilities
 	requestDeduplicator: RequestDeduplicator;
+
+	// Tracks the last daily-note date (YYYY-MM-DD) so Bases calendar views can navigate to it.
+	lastDailyNoteDate: string | null = null;
 	predictivePrefetcher: PredictivePrefetcher;
 	domReconciler: DOMReconciler;
 	uiStateManager: UIStateManager;
@@ -322,6 +325,7 @@ export default class TaskNotesPlugin extends Plugin {
 				const dailyNoteMatch = name.match(/^(\d{4})-(\d{2})-(\d{2})$/);
 				if (!dailyNoteMatch) return;
 				const dateStr = `${dailyNoteMatch[1]}-${dailyNoteMatch[2]}-${dailyNoteMatch[3]}`;
+				this.lastDailyNoteDate = dateStr;
 				navigateAllCalendarsToDailyNote(dateStr);
 			})
 		);
