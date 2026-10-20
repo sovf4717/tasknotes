@@ -64,7 +64,11 @@ import { parseDateToLocal } from "../utils/dateUtils";
 import {
 	CalendarRecreateNavigationState,
 	shouldPreserveVisibleDateOnCalendarRecreate,
-} from "./calendarRecreateUtils";
+	} from "./calendarRecreateUtils";
+import {
+	registerCalendarView,
+	unregisterCalendarView,
+} from "./calendarViewRegistry";
 import type { BasesTaskUpdateSource } from "./basesUpdateEvents";
 import {
 	determineCalendarInitialDate,
@@ -623,6 +627,7 @@ export class CalendarView extends BasesViewBase {
 		this.releaseCanvasTimeGridScaleCorrection = installCanvasTimeGridScaleCorrection();
 		// Call parent onload which sets up container and listeners
 		super.onload();
+		registerCalendarView(this);
 	}
 
 	/**
@@ -3054,6 +3059,59 @@ export class CalendarView extends BasesViewBase {
 		this.calendarEl.appendChild(errorEl);
 	}
 
+/**
+	 * Navigate this calendar to the given daily-note date (YYYY-MM-DD).
+	 * Switches to the list view and shows only that single day.
+	 * Called when the user opens a daily-note file so the agenda
+	 * focuses on that day's tasks.
+	 */
+	navigateToDailyNote(dateStr: string): void {
+		if (!this.calendar) return;
+		try {
+			const date = new Date(dateStr + "T00:00:00");
+			if (Number.isNaN(date.getTime())) return;
+
+			// Switch to listWeek if not already there
+			const currentView = this.calendar.view?.type;
+			if (currentView !== "listWeek") {
+				this.calendar.changeView("listWeek");
+			}
+
+			// Show only 1 day in the list view
+			const fullCal = this.calendar as unknown as {
+				options?: { views?: Record<string, Record<string, unknown>> };
+				setOption(name: string, value: unknown): void;
+			};
+			const views = fullCal.options?.views;
+			if (views?.listWeek) {
+				fullCal.setOption("views", {
+					...views,
+					listWeek: {
+						...views.listWeek,
+						duration: { days: 1 },
+					},
+				});
+			}
+			if (views?.listWeek) {
+				this.calendar.setOption("views", {
+					...(views as Record<string, unknown>),
+					listWeek: {
+						...(views.listWeek as Record<string, unknown>),
+						duration: { days: 1 },
+					},
+				});
+			}
+
+			this.calendar.gotoDate(date);
+		} catch (e) {
+			tasknotesLogger.debug("[CalendarView] Failed to navigate to daily note:", {
+				category: "provider",
+				operation: "navigate-to-daily-note",
+				error: e,
+			});
+		}
+	}
+
 	onunload(): void {
 		// Note: We intentionally do NOT call config.set() here (issue #1397)
 		// The Bases API has a bug where config objects can point to wrong files,
@@ -3077,6 +3135,7 @@ export class CalendarView extends BasesViewBase {
 		this.canvasZoomObserver = null;
 		this.releaseCanvasTimeGridScaleCorrection?.();
 		this.releaseCanvasTimeGridScaleCorrection = null;
+		unregisterCalendarView(this);
 		this.calendarEl = null;
 		this.currentTasks = [];
 	}

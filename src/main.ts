@@ -27,6 +27,7 @@ import {
 	EVENT_TASK_UPDATED,
 	EVENT_DATE_CHANGED,
 } from "./types";
+import { navigateAllCalendarsToDailyNote } from "./bases/calendarViewRegistry";
 
 import { TaskCreationModal } from "./modals/TaskCreationModal";
 import { TaskEditModal } from "./modals/TaskEditModal";
@@ -310,6 +311,19 @@ export default class TaskNotesPlugin extends Plugin {
 
 		await initializePluginRuntime(this);
 		this.registerTaskNotesFileMenuActions();
+
+		// Navigate open calendar/agenda views to the daily-note date when a
+		// date-named file (YYYY-MM-DD.md) is opened.
+		this.registerEvent(
+			this.app.workspace.on("file-open", (file: TAbstractFile | null) => {
+				if (!(file instanceof TFile)) return;
+				const name = file.name.replace(/\.md$/i, "");
+				const dailyNoteMatch = name.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+				if (!dailyNoteMatch) return;
+				const dateStr = `${dailyNoteMatch[1]}-${dailyNoteMatch[2]}-${dailyNoteMatch[3]}`;
+				navigateAllCalendarsToDailyNote(dateStr);
+			})
+		);
 
 		// Start migration check early (before views can be opened)
 		this.migrationPromise = this.performEarlyMigrationCheck();
