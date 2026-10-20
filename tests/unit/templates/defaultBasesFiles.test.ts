@@ -164,7 +164,8 @@ describe("defaultBasesFiles", () => {
 
 		expect(parse(template).formulas.dueIn).toContain('if(due.isEmpty(), "", if(formula.daysUntilDue == 0');
 		expect(template).toContain("formula.dueIn:\n    displayName: Due in");
-		expect(template).toContain("      - due\n      - formula.dueIn\n      - file.name");
+		expect(template).toContain("      - due\n      - formula.dueIn\n      - formula.completedAtTime\n      - file.name");
+		expect(template).toContain("formula.completedAtTime:\n    displayName: Completed at");
 		expect(template).toContain('calendarView: "listWeek"');
 		expect(template).toContain("listDayCount: 7");
 		expect(template).toContain("showOverdueOnToday: true");

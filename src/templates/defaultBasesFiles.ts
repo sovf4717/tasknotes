@@ -900,7 +900,8 @@ ${orderYaml}
 		case 'open-agenda-view': {
 			const dueProperty = mapPropertyToBasesProperty('due', plugin);
 			const agendaOrderArray = insertOrderPropertyAfter(orderArray, dueProperty, "formula.dueIn");
-			const agendaOrderYaml = formatOrderArray(agendaOrderArray);
+			const agendaFinalOrder = insertOrderPropertyAfterOrAppend(agendaOrderArray, "formula.completedAtTime", "formula.dueIn");
+			const agendaOrderYaml = formatOrderArray(agendaFinalOrder);
 			const agendaPropertiesYaml = agendaOrderArray.includes("formula.dueIn")
 				? `
 properties:
