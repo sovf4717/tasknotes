@@ -354,19 +354,42 @@ export default class TaskNotesPlugin extends Plugin {
 	/** Folder whose notes are treated as diary/daily notes. */
 	private static readonly DIARY_FOLDER_NAME = "\u65e5\u8bb0";
 
+	/** Matches daily notes named after their date, e.g. 2026-10-21. */
+	private static readonly DATED_NOTE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+
 	/**
-	 * Check whether the active file is a diary note and navigate calendars to
-	 * today's date. Diary notes are identified by their folder because their
-	 * filenames do not contain a date.
+	 * Check whether the active file is a daily note and navigate calendars to
+	 * its date. A file whose name is a date (2026-10-21) supplies that date;
+	 * files inside the diary folder supply today's date.
 	 */
 	private tryNavigateToDiaryNote(): void {
 		const activeFile = this.app.workspace.getActiveFile();
 		if (!activeFile) return;
-		if (!this.isDiaryNotePath(activeFile.path)) return;
 
-		const dateStr = format(new Date(), "yyyy-MM-dd");
+		const dateStr = this.resolveDailyNoteDate(activeFile.path);
+		if (!dateStr) return;
+
 		this.lastDailyNoteDate = dateStr;
 		navigateAllCalendarsToDailyNote(dateStr);
+	}
+
+	/**
+	 * Resolve the date a note stands for, or null when it is not a daily note.
+	 * Prefers a date in the filename. Falls back to today for notes inside the
+	 * diary folder, whose filenames may not contain a date.
+	 */
+	resolveDailyNoteDate(path: string): string | null {
+		const lastSlash = path.lastIndexOf("/");
+		const basename = path
+			.slice(lastSlash + 1)
+			.replace(/\.md$/i, "")
+			.trim();
+		const match = basename.match(TaskNotesPlugin.DATED_NOTE_PATTERN);
+		if (match) {
+			return `${match[1]}-${match[2]}-${match[3]}`;
+		}
+
+		return this.isDiaryNotePath(path) ? format(new Date(), "yyyy-MM-dd") : null;
 	}
 
 	isDiaryNotePath(path: string): boolean {

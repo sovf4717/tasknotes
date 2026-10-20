@@ -1487,13 +1487,16 @@ export class CalendarView extends BasesViewBase {
 		win.setTimeout(() => {
 			let targetDate = this._pendingDailyNoteDate || this.plugin.lastDailyNoteDate;
 
-			// If no tracked date, scan open leaves for a diary note
+			// If no tracked date, scan open leaves for a daily note
 			if (!targetDate) {
 				this.app.workspace.iterateAllLeaves?.((leaf) => {
 					if (targetDate) return;
 					const path = (leaf as { view?: { file?: { path?: string } } }).view?.file?.path;
-					if (!path || !this.plugin.isDiaryNotePath(path)) return;
-					targetDate = format(new Date(), "yyyy-MM-dd");
+					if (!path) return;
+					const resolvedDate = this.plugin.resolveDailyNoteDate(path);
+					if (resolvedDate) {
+						targetDate = resolvedDate;
+					}
 				});
 			}
 
