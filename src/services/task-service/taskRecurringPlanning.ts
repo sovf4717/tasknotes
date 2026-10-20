@@ -62,6 +62,8 @@ export interface ApplyRecurringTaskCompleteFrontmatterInput {
 	googleCalendarExceptionOriginalScheduledField: string;
 	googleCalendarMovedOriginalDatesField: string;
 	plan: RecurringTaskCompletePlan;
+	completedAtField?: string;
+	completedAtValue?: string;
 }
 
 export interface ApplyRecurringTaskSkippedFrontmatterInput {
@@ -335,6 +337,8 @@ export function applyRecurringTaskCompleteFrontmatterChange({
 	googleCalendarExceptionOriginalScheduledField,
 	googleCalendarMovedOriginalDatesField,
 	plan,
+	completedAtField,
+	completedAtValue,
 }: ApplyRecurringTaskCompleteFrontmatterInput): void {
 	if (!frontmatter[completeInstancesField]) {
 		frontmatter[completeInstancesField] = [];
@@ -351,6 +355,16 @@ export function applyRecurringTaskCompleteFrontmatterChange({
 		}
 	} else {
 		frontmatter[completeInstancesField] = completeDates.filter((d) => d !== plan.dateStr);
+	}
+
+	// Record the local completion time of the occurrence being toggled so the
+	// "Completed at" column can show it for recurring tasks too.
+	if (completedAtField) {
+		if (plan.newComplete && completedAtValue) {
+			frontmatter[completedAtField] = completedAtValue;
+		} else if (frontmatter[completedAtField]) {
+			delete frontmatter[completedAtField];
+		}
 	}
 
 	frontmatter[skippedInstancesField] = plan.updatedTask.skipped_instances || [];

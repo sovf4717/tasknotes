@@ -1966,6 +1966,8 @@ export class TaskService {
 				recurrenceField,
 				googleCalendarExceptionOriginalScheduledField,
 				googleCalendarMovedOriginalDatesField,
+				completedAtField: COMPLETED_AT_PROPERTY,
+				completedAtValue: getCurrentDateTimeString(),
 				plan: recurringPlan,
 			});
 		});
