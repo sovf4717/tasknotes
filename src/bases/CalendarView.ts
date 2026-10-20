@@ -628,6 +628,33 @@ export class CalendarView extends BasesViewBase {
 		// Call parent onload which sets up container and listeners
 		super.onload();
 		registerCalendarView(this);
+
+		// Navigate to the last-active daily-note date when this Bases view becomes active.
+		// This covers the case where the user has a diary file open in another tab and
+		// clicks the agenda Bases tab.
+		this.registerEvent(
+			this.app.workspace.on("active-leaf-change", () => {
+				if (!this.calendar) return;
+				// Only act if THIS Bases view is visible in the active leaf's DOM tree.
+				const activeLeaf = this.app.workspace.activeLeaf;
+				if (!activeLeaf) return;
+				const activeViewEl = (activeLeaf.view as { containerEl?: HTMLElement } | undefined)?.containerEl;
+				if (activeViewEl && !activeViewEl.contains(this.containerEl)) {
+					return;
+				}
+				// Find the most-recently-active markdown file (could be in another tab)
+				const activeFile = this.app.workspace.getActiveFile();
+				if (!activeFile) return;
+				const name = activeFile.name.replace(/\.md$/i, "");
+				const m = name.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+				if (!m) return;
+				const dateStr = `${m[1]}-${m[2]}-${m[3]}`;
+				// Defer slightly so FullCalendar has finished its own render cycle
+				const win = this.containerEl.ownerDocument.defaultView || window;
+				win.setTimeout(() => this.navigateToDailyNote(dateStr), 150);
+			})
+		);
+		registerCalendarView(this);
 	}
 
 	/**
