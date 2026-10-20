@@ -1502,14 +1502,6 @@ export class CalendarView extends BasesViewBase {
 				this._pendingDailyNoteDate = null;
 			}
 		}, 200);
-		const pendingDate = this._pendingDailyNoteDate || this.plugin.lastDailyNoteDate;
-		if (pendingDate) {
-			const win = this.containerEl.ownerDocument.defaultView || window;
-			win.setTimeout(() => {
-				this.navigateToDailyNote(pendingDate);
-				this._pendingDailyNoteDate = null;
-			}, 150);
-		}
 		if (this.plugin.lastDailyNoteDate) {
 			const win = this.containerEl.ownerDocument.defaultView || window;
 			win.setTimeout(() => this.navigateToDailyNote(this.plugin.lastDailyNoteDate!), 150);
@@ -3137,6 +3129,11 @@ export class CalendarView extends BasesViewBase {
 		try {
 			const date = new Date(dateStr + "T00:00:00");
 			if (Number.isNaN(date.getTime())) return;
+			// Switch to single-day view so only that day's tasks are shown
+			const currentView = this.calendar.view?.type;
+			if (currentView !== "timeGridDay") {
+				this.calendar.changeView("timeGridDay");
+			}
 			this.calendar.gotoDate(date);
 		} catch (e) {
 			tasknotesLogger.debug("[CalendarView] Failed to navigate to daily note:", {
