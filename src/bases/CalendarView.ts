@@ -468,6 +468,11 @@ export class CalendarView extends BasesViewBase {
 	// Pending daily-note date to navigate to after next render
 	private _pendingDailyNoteDate: string | null = null;
 
+	// Whether this calendar has already switched to the daily-note view. The
+	// switch happens once per calendar instance so a view the user picks
+	// afterwards is never overridden by later diary-note events.
+	private _dailyNoteViewApplied = false;
+
 	// Flag to skip debounce for user-initiated actions (timeblock creation, drag/drop, etc.)
 
 	// Flag to skip debounce for user-initiated actions (timeblock creation, drag/drop, etc.)
@@ -3125,10 +3130,14 @@ export class CalendarView extends BasesViewBase {
 		try {
 			const date = new Date(dateStr + "T00:00:00");
 			if (Number.isNaN(date.getTime())) return;
-			// Switch to the list view so the day's tasks are listed compactly
-			const currentView = this.calendar.view?.type;
-			if (currentView !== "listWeek") {
-				this.calendar.changeView("listWeek");
+			// Switch to the list view only the first time a diary note opens this
+			// calendar. Later diary-note events just move the date so a view the
+			// user selected manually is kept.
+			if (!this._dailyNoteViewApplied) {
+				this._dailyNoteViewApplied = true;
+				if (this.calendar.view?.type !== "listWeek") {
+					this.calendar.changeView("listWeek");
+				}
 			}
 			this.calendar.gotoDate(date);
 		} catch (e) {
