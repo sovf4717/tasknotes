@@ -313,11 +313,12 @@ export default class TaskNotesPlugin extends Plugin {
 		this.registerTaskNotesFileMenuActions();
 
 		// Navigate open calendar/agenda views to the daily-note date when a
-		// date-named file (YYYY-MM-DD.md) is opened.
+		// date-named file (YYYY-MM-DD.md) becomes the active leaf.
 		this.registerEvent(
-			this.app.workspace.on("file-open", (file: TAbstractFile | null) => {
-				if (!(file instanceof TFile)) return;
-				const name = file.name.replace(/\.md$/i, "");
+			this.app.workspace.on("active-leaf-change", () => {
+				const activeFile = this.app.workspace.getActiveFile();
+				if (!activeFile) return;
+				const name = activeFile.name.replace(/\.md$/i, "");
 				const dailyNoteMatch = name.match(/^(\d{4})-(\d{2})-(\d{2})$/);
 				if (!dailyNoteMatch) return;
 				const dateStr = `${dailyNoteMatch[1]}-${dailyNoteMatch[2]}-${dailyNoteMatch[3]}`;
