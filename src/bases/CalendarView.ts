@@ -1477,7 +1477,31 @@ export class CalendarView extends BasesViewBase {
 		this.scheduleDailyNoteHeaderLinkUpdate();
 		this.scheduleRefreshButtonIconUpdate();
 
-		// Re-apply pending daily-note navigation (e.g. if the calendar was recreated by a Bases data update)
+		// After calendar creation, navigate to the pending daily-note date if set.
+		// Also proactively scan open leaves for daily-note files so it works
+		// even when the diary file was already open from a previous session.
+		const win = this.containerEl.ownerDocument.defaultView || window;
+		win.setTimeout(() => {
+			let targetDate = this._pendingDailyNoteDate || this.plugin.lastDailyNoteDate;
+
+			// If no tracked date, scan all open leaves for a daily-note file
+			if (!targetDate) {
+				this.app.workspace.iterateAllLeaves?.((leaf) => {
+					if (targetDate) return;
+					const file = (leaf as { view?: { file?: { name?: string } } }).view?.file;
+					if (!file?.name) return;
+					const m = file.name.replace(/\.md$/i, "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+					if (m) {
+						targetDate = `${m[1]}-${m[2]}-${m[3]}`;
+					}
+				});
+			}
+
+			if (targetDate) {
+				this.navigateToDailyNote(targetDate);
+				this._pendingDailyNoteDate = null;
+			}
+		}, 200);
 		const pendingDate = this._pendingDailyNoteDate || this.plugin.lastDailyNoteDate;
 		if (pendingDate) {
 			const win = this.containerEl.ownerDocument.defaultView || window;
@@ -3101,32 +3125,18 @@ export class CalendarView extends BasesViewBase {
 		this.calendarEl.appendChild(errorEl);
 	}
 
-/**
-	 * Navigate this calendar to the given daily-note date (YYYY-MM-DD).
-	 * Switches to the list view and shows only that single day.
-	 * Called when the user opens a daily-note file so the agenda
-	 * focuses on that day's tasks.
-	 */
 	/**
 	 * Navigate this calendar to the given daily-note date (YYYY-MM-DD).
-	 * Switches to the list view and navigates to that date.
-	 * Also stores the date so it is re-applied after Bases data updates.
+	 * Stores the date so it is re-applied after Bases data updates and
+	 * calendar recreations.
 	 */
 	navigateToDailyNote(dateStr: string): void {
-		// Store for post-render re-application
 		this._pendingDailyNoteDate = dateStr;
 
 		if (!this.calendar) return;
 		try {
 			const date = new Date(dateStr + "T00:00:00");
 			if (Number.isNaN(date.getTime())) return;
-
-			// Switch to listWeek if not already there
-			const currentView = this.calendar.view?.type;
-			if (currentView !== "listWeek") {
-				this.calendar.changeView("listWeek");
-			}
-
 			this.calendar.gotoDate(date);
 		} catch (e) {
 			tasknotesLogger.debug("[CalendarView] Failed to navigate to daily note:", {

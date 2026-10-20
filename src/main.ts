@@ -319,6 +319,30 @@ export default class TaskNotesPlugin extends Plugin {
 		// date-named file (YYYY-MM-DD.md) becomes the active leaf.
 		this.registerEvent(
 			this.app.workspace.on("active-leaf-change", () => {
+				this.tryNavigateToDailyNote();
+			})
+		);
+		// Also catch file opens (covers split-view cases where active-leaf-change
+		// may not fire for the diary file).
+		this.registerEvent(
+			this.app.workspace.on("file-open", () => {
+				this.tryNavigateToDailyNote();
+			})
+		);
+	}
+
+	/** Check the active file for a daily-note date and navigate calendars to it. */
+	private tryNavigateToDailyNote(): void {
+		const activeFile = this.app.workspace.getActiveFile();
+		if (!activeFile) return;
+		const name = activeFile.name.replace(/\.md$/i, "");
+		const dailyNoteMatch = name.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+		if (!dailyNoteMatch) return;
+		const dateStr = `${dailyNoteMatch[1]}-${dailyNoteMatch[2]}-${dailyNoteMatch[3]}`;
+		this.lastDailyNoteDate = dateStr;
+		navigateAllCalendarsToDailyNote(dateStr);
+		this.registerEvent(
+			this.app.workspace.on("active-leaf-change", () => {
 				const activeFile = this.app.workspace.getActiveFile();
 				if (!activeFile) return;
 				const name = activeFile.name.replace(/\.md$/i, "");
