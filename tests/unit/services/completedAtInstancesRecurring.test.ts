@@ -140,7 +140,8 @@ describe("recurring task per-occurrence completion times", () => {
 			"2026-05-20T09:45"
 		);
 
-		expect(plan.updatedTask.completedAtInstances).toEqual([
+expect(plan.updatedTask.completedAtInstances).toEqual([
+			{ date: "2026-05-19", at: "2026-05-19T00:00" },
 			{ date: "2026-05-20", at: "2026-05-20T09:45" },
 		]);
 	});

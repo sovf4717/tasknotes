@@ -20,6 +20,7 @@ import {
 	resolveGoogleCalendarRecurringExceptionAfterCurrentInstanceAction,
 } from "./googleCalendarRecurringExceptions";
 import {
+buildCompletedAtValue,
 	normalizeCompletedAtInstances,
 	upsertCompletedAtInstanceList,
 } from "../../utils/completedAtInstances";
@@ -381,7 +382,7 @@ export function applyRecurringTaskCompleteFrontmatterChange({
 
 	// Keep each occurrence's own completion time in the per-date history so
 	// completing one day never overwrites another day's recorded time.
-	if (completedAtInstancesField) {
+if (completedAtInstancesField) {
 		let completedAtInstances = normalizeCompletedAtInstances(
 			frontmatter[completedAtInstancesField]
 		);
@@ -391,6 +392,21 @@ export function applyRecurringTaskCompleteFrontmatterChange({
 				plan.dateStr,
 				completedAtValue
 			);
+			// Back-fill missing per-occurrence times for dates already in
+			// complete_instances so every day keeps its own recorded time.
+			const completeDates = getStringArray(
+				frontmatter[completeInstancesField]
+			);
+			const recordedDates = new Set(completedAtInstances.map((e) => e.date));
+			for (const dateStr of completeDates) {
+				if (!recordedDates.has(dateStr) && dateStr !== plan.dateStr) {
+					completedAtInstances = upsertCompletedAtInstanceList(
+						completedAtInstances,
+						dateStr,
+						buildCompletedAtValue(dateStr)
+					);
+				}
+			}
 		} else if (!plan.newComplete) {
 			completedAtInstances = completedAtInstances.filter(
 				(entry) => entry.date !== plan.dateStr

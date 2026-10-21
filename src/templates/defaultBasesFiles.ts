@@ -352,10 +352,11 @@ function generateAllFormulas(plugin: TaskNotesPlugin): Record<string, string> {
 		dueIn: `if(${dueIsEmpty}, "", if(formula.daysUntilDue == 0, "Today", if(formula.daysUntilDue == 1, "1 day", if(formula.daysUntilDue > 1, formula.daysUntilDue + " days", if(formula.daysUntilDue == -1, "1 day overdue", formula.daysUntilDue * -1 + " days overdue")))))`,
 
 		// Completion time of day (HH:mm) recorded when a task was marked complete
-		completedAtTime: `if(${completedAtProperty}, date(${completedAtProperty}).format("HH:mm"), "")`,
-
-		// Days until scheduled (negative = past, positive = days remaining)
-		daysUntilScheduled: `if(${scheduledHasValue}, ((number(date(${scheduledProperty})) - number(today())) / 86400000).floor(), null)`,
+		// Completion time of day (HH:mm) recorded when a task was marked complete.
+		// Prefer the per-occurrence history (completedAtInstances) so a recurring
+		// task shows the most recently completed occurrence's time; fall back to
+		// the single completedAt field when no per-occurrence data exists.
+		completedAtTime: `if(completedAtInstances && list(completedAtInstances).length > 0, date(list(completedAtInstances).last().at).format("HH:mm"), if(${completedAtProperty}, date(${completedAtProperty}).format("HH:mm"), ""))`,
 
 		// Days since the task was created
 		daysSinceCreated: '((number(now()) - number(file.ctime)) / 86400000).floor()',
