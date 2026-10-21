@@ -3,7 +3,8 @@ import { extractBasesValue } from "./taskCardPresentation";
 import { createTaskNotesLogger } from "../utils/tasknotesLogger";
 import {
 	COMPLETED_AT_INSTANCES_PROPERTY,
-	getCompletedAtTimeForDate,
+getCompletedAtTimeForDate,
+	getCompletedAtValueForDate,
 } from "../utils/completedAtInstances";
 import { getDatePart, getTodayString } from "../utils/dateUtils";
 
@@ -143,8 +144,39 @@ export function getTaskCardPropertyValue(
 			return getPropertyExtractorValue(task, mappingKey);
 		}
 
-		if (hasPropertyExtractor(propertyId)) {
+if (hasPropertyExtractor(propertyId)) {
 			return getPropertyExtractorValue(task, propertyId);
+		}
+
+		// For any property that maps to the internal "completedAt" field,
+		// prefer the per-occurrence completion time from completedAtInstances
+		// when a specific occurrence date is being displayed (agenda/calendar).
+		// This prevents the single latest completedAt value from overwriting
+		// every day's own recorded completion time for recurring tasks.
+		if (
+			options?.completedAtTimeDate &&
+			mappingKey === "completedAt" &&
+			task.recurrence &&
+			!task.recurrence_parent &&
+			!task.occurrence_date
+		) {
+			const day = options.completedAtTimeDate;
+			const localValue = getCompletedAtValueForDate(
+				task,
+				day,
+				task.path
+					? [getFrontmatterValue(task.path, COMPLETED_AT_INSTANCES_PROPERTY, context)]
+					: []
+			);
+			if (localValue) {
+				return localValue;
+			}
+
+			// Don't leak another day's completion time into this day's display.
+			const latestDate = task.completedAt ? getDatePart(task.completedAt) : "";
+			if (latestDate !== day) {
+				return "";
+			}
 		}
 
 		if (propertyId.startsWith("user:")) {
