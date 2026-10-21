@@ -660,10 +660,12 @@ export class CalendarView extends BasesViewBase {
 		// This covers the case where the user has a diary file open in another tab and
 		// clicks the agenda Bases tab.
 		this.registerEvent(
-			this.app.workspace.on("active-leaf-change", () => {
+			// Bases assigns view.app after the component tree is loaded, so rely
+			// on the plugin's app reference, which is always available here.
+			this.plugin.app.workspace.on("active-leaf-change", () => {
 				if (!this.calendar) return;
 				// Only act if THIS Bases view is visible in the active leaf's DOM tree.
-				const activeLeaf = this.app.workspace.activeLeaf;
+				const activeLeaf = this.plugin.app.workspace.activeLeaf;
 				if (!activeLeaf) return;
 				const activeViewEl = (activeLeaf.view as { containerEl?: HTMLElement } | undefined)?.containerEl;
 				if (activeViewEl && !activeViewEl.contains(this.containerEl)) {

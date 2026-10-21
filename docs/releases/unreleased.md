@@ -47,6 +47,7 @@ When a change has user-facing documentation, include a canonical tasknotes.dev l
 
 ## Fixed
 
+- Directly opening a TaskNotes base file (for example `agenda-default.base`) failed to load the view: the calendar view read the Bases-assigned `app` reference inside its load lifecycle, before Bases had assigned it. The calendar now always uses the plugin's app reference.
 - (#2408) Localized the Modal Fields settings controls, field-card labels and type badges, notices, and reset confirmation. Saved field and group names remain unchanged. Thanks to @whysoslow for contributing this fix.
 
 - Kanban drops into the empty ("None") column now clear the grouping property instead of writing the text "None", and dropping onto a list-valued column no longer overwrites the list when the task's source column is unknown.
