@@ -47,6 +47,8 @@ When a change has user-facing documentation, include a canonical tasknotes.dev l
 
 ## Fixed
 
+- Recurring tasks no longer leak the latest completion time into other days in the "Completed at" column. Each day of a recurring task now shows the time recorded for that day's own occurrence (for example a day's card in the Agenda list view shows that day's time, and a diary note shows the system date's completion time); a day without its own recorded completion time no longer shows the most recent occurrence's time.
+
 - Directly opening a TaskNotes base file (for example `agenda-default.base`) failed to load the view: the calendar view read the Bases-assigned `app` reference inside its load lifecycle, before Bases had assigned it. The calendar now always uses the plugin's app reference.
 - (#2408) Localized the Modal Fields settings controls, field-card labels and type badges, notices, and reset confirmation. Saved field and group names remain unchanged. Thanks to @whysoslow for contributing this fix.
 

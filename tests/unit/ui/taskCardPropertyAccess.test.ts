@@ -16,11 +16,13 @@ function createTask(overrides: Partial<TaskInfo> = {}): TaskInfo {
 	};
 }
 
-function createContext(options: {
-	mapping?: Record<string, string | null | undefined>;
-	frontmatter?: Record<string, unknown>;
-	userFields?: Array<{ id?: string; key?: string }>;
-} = {}): TaskCardPropertyAccessContext {
+function createContext(
+	options: {
+		mapping?: Record<string, string | null | undefined>;
+		frontmatter?: Record<string, unknown>;
+		userFields?: Array<{ id?: string; key?: string }>;
+	} = {}
+): TaskCardPropertyAccessContext {
 	return {
 		fieldMapper: {
 			lookupMappingKey: (propertyId: string) => options.mapping?.[propertyId] ?? null,
@@ -146,5 +148,111 @@ describe("TaskCard property access", () => {
 
 		expect(getTaskCardPropertyValue(createTask(), "owner", context)).toBe("Ada");
 		expect(getTaskCardPropertyValue(createTask(), "missing", context)).toBeNull();
+	});
+
+	describe("formula.completedAtTime per-occurrence times", () => {
+		it("shows each day's own recorded completion time for recurring series tasks", () => {
+			const task = createTask({
+				recurrence: "FREQ=DAILY",
+				completedAt: "2026-10-21T09:00",
+				completedAtInstances: [
+					{ date: "2026-10-20", at: "2026-10-20T14:37" },
+					{ date: "2026-10-21", at: "2026-10-21T09:00" },
+				],
+			});
+			const context = createContext();
+
+			expect(
+				getTaskCardPropertyValue(task, "formula.completedAtTime", context, {
+					completedAtTimeDate: "2026-10-20",
+				})
+			).toBe("14:37");
+			expect(
+				getTaskCardPropertyValue(task, "formula.completedAtTime", context, {
+					completedAtTimeDate: "2026-10-21",
+				})
+			).toBe("09:00");
+		});
+
+		it("does not leak the latest completion time into another day", () => {
+			const task = createTask({
+				recurrence: "FREQ=DAILY",
+				completedAt: "2026-10-21T09:00",
+				basesData: {
+					getValue: () => ({ icon: "lucide-clock", display: "09:00" }),
+				},
+			});
+			const context = createContext();
+
+			expect(
+				getTaskCardPropertyValue(task, "formula.completedAtTime", context, {
+					completedAtTimeDate: "2026-10-20",
+				})
+			).toBe("");
+		});
+
+		it("falls back to the Bases value when the latest completion belongs to the same day", () => {
+			const task = createTask({
+				recurrence: "FREQ=DAILY",
+				completedAt: "2026-10-21T09:00",
+				basesData: {
+					getValue: () => ({ icon: "lucide-clock", display: "09:00" }),
+				},
+			});
+			const context = createContext();
+
+			expect(
+				getTaskCardPropertyValue(task, "formula.completedAtTime", context, {
+					completedAtTimeDate: "2026-10-21",
+				})
+			).toBe("09:00");
+		});
+
+		it("keeps the Bases fallback for materialized occurrences and plain tasks", () => {
+			const occurrence = createTask({
+				recurrence_parent: "TaskNotes/parent.md",
+				occurrence_date: "2026-10-20",
+				completedAt: "2026-10-20T14:37",
+				basesData: {
+					getValue: () => ({ icon: "lucide-clock", display: "14:37" }),
+				},
+			});
+			const plain = createTask({
+				completedAt: "2026-10-20T14:37",
+				basesData: {
+					getValue: () => ({ icon: "lucide-clock", display: "14:37" }),
+				},
+			});
+			const context = createContext();
+
+			expect(
+				getTaskCardPropertyValue(occurrence, "formula.completedAtTime", context, {
+					completedAtTimeDate: "2026-10-19",
+				})
+			).toBe("14:37");
+			expect(
+				getTaskCardPropertyValue(plain, "formula.completedAtTime", context, {
+					completedAtTimeDate: "2026-10-19",
+				})
+			).toBe("14:37");
+		});
+
+		it("reads per-occurrence times from metadata frontmatter", () => {
+			const task = createTask({
+				recurrence: "FREQ=DAILY",
+				completedAt: "2026-10-21T09:00",
+			});
+			const context = createContext({
+				frontmatter: {
+					completedAtInstances: [{ date: "2026-10-20", at: "2026-10-20T08:15" }],
+				},
+			});
+
+			expect(
+				getTaskCardPropertyValue(task, "formula.completedAtTime", context, {
+					completedAtTimeDate: "2026-10-20",
+				})
+			).toBe("08:15");
+		});
 	});
 });

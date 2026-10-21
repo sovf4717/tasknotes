@@ -1,6 +1,11 @@
 import { TaskInfo } from "../types";
 import { extractBasesValue } from "./taskCardPresentation";
 import { createTaskNotesLogger } from "../utils/tasknotesLogger";
+import {
+	COMPLETED_AT_INSTANCES_PROPERTY,
+	getCompletedAtTimeForDate,
+} from "../utils/completedAtInstances";
+import { getDatePart, getTodayString } from "../utils/dateUtils";
 
 const tasknotesLogger = createTaskNotesLogger({ tag: "Ui/TaskCardPropertyAccess" });
 
@@ -83,12 +88,56 @@ function getPropertyExtractorValue(task: TaskInfo, propertyId: string): unknown 
 	return PROPERTY_EXTRACTORS[propertyId](task);
 }
 
+/**
+ * Optional per-property value overrides for task card rendering.
+ */
+export interface TaskCardPropertyValueOptions {
+	/**
+	 * Occurrence date (YYYY-MM-DD) whose recorded completion time should be
+	 * shown for the `formula.completedAtTime` property. Defaults to the
+	 * system date when omitted.
+	 */
+	completedAtTimeDate?: string;
+}
+
 export function getTaskCardPropertyValue(
 	task: TaskInfo,
 	propertyId: string,
-	context: TaskCardPropertyAccessContext
+	context: TaskCardPropertyAccessContext,
+	options?: TaskCardPropertyValueOptions
 ): unknown {
 	try {
+		// The generated "completedAtTime" Bases formula was computed from the
+		// single latest `completedAt` value, which overwrote every day's
+		// completion time for recurring tasks. Prefer this occurrence date's
+		// own recorded time from `completedAtInstances` instead.
+		if (propertyId === "formula.completedAtTime") {
+			const day = options?.completedAtTimeDate ?? getTodayString();
+			const localTime = getCompletedAtTimeForDate(
+				task,
+				day,
+				task.path
+					? [getFrontmatterValue(task.path, COMPLETED_AT_INSTANCES_PROPERTY, context)]
+					: []
+			);
+			if (localTime) {
+				return localTime;
+			}
+
+			// For a recurring series task, the Bases formula value is computed
+			// from the single latest `completedAt` value and therefore only
+			// reflects the most recent occurrence's time. Fall back to it just
+			// when that latest completion belongs to this same day; otherwise
+			// this day would show another occurrence's time instead of its own.
+			// Materialized occurrence files keep their own `completedAt`, so the
+			// fallback is still valid for them.
+			if (task.recurrence && !task.recurrence_parent && !task.occurrence_date) {
+				const latestDate = task.completedAt ? getDatePart(task.completedAt) : "";
+				if (latestDate !== day) {
+					return "";
+				}
+			}
+		}
 		const mappingKey = context.fieldMapper.lookupMappingKey(propertyId);
 		if (mappingKey && hasPropertyExtractor(mappingKey)) {
 			return getPropertyExtractorValue(task, mappingKey);
