@@ -473,6 +473,23 @@ export class CalendarView extends BasesViewBase {
 	// afterwards is never overridden by later diary-note events.
 	private _dailyNoteViewApplied = false;
 
+	// The list-view switch is meant as a starting point once per session, not
+	// once per embedded calendar instance: each diary note creates its own
+	// embedded view, and re-applying it would undo a view the user picked.
+	private static dailyNoteViewAppliedOnce = false;
+
+	/** How many times an embedded view retries resolving its host note. */
+	private static readonly HOST_DATE_MAX_RETRIES = 20;
+
+	// Daily-note date this calendar has already navigated to. Switching to
+	// another diary note updates this, so the calendar follows the new note
+	// without fighting user navigation inside the same note.
+	private _appliedDailyNoteDate: string | null = null;
+
+	// An embedded view can render before its host note's DOM is attached, so
+	// resolving the host file is retried a few times before giving up.
+	private _hostDateRetryCount = 0;
+
 	// Flag to skip debounce for user-initiated actions (timeblock creation, drag/drop, etc.)
 
 	// Flag to skip debounce for user-initiated actions (timeblock creation, drag/drop, etc.)
@@ -1287,13 +1304,31 @@ export class CalendarView extends BasesViewBase {
 			// Use setTimeout to avoid deep call stack
 			window.setTimeout(() => void this.render(), 0);
 		}
+
+		// Follow the note that embeds this calendar. Bases re-renders the same
+		// view instance when the user switches notes, and the ephemeral-state
+		// restore that follows a render would otherwise put the previous day
+		// back. A deferred call runs after that restore, so it wins.
+		const win = this.containerEl.ownerDocument.defaultView || window;
+		win.setTimeout(() => this.applyHostDailyNoteDate(), 0);
 	}
 
 	private async initializeCalendar(taskNotes: TaskInfo[]): Promise<void> {
 		if (!this.calendarEl) return;
 
-		// Determine initial date
-		const initialDate = this._recreateTargetDate ?? this.determineInitialDate(taskNotes);
+		// Determine initial date. An embedded calendar (for example the Agenda
+		// base inside a diary note) uses the date of the note that embeds it, so
+		// the very first render already shows the right day instead of relying
+		// on a delayed navigation that races with the embed being created.
+		const hostDailyNoteDate = this._recreateTargetDate ? null : this.getHostDailyNoteDate();
+		let initialDate: Date | string | undefined;
+		if (this._recreateTargetDate) {
+			initialDate = this._recreateTargetDate;
+		} else if (hostDailyNoteDate) {
+			initialDate = parseDateToLocal(hostDailyNoteDate);
+		} else {
+			initialDate = this.determineInitialDate(taskNotes);
+		}
 
 		// Build calendar options
 		const calendarOptions: CalendarOptions = {
@@ -1481,29 +1516,27 @@ export class CalendarView extends BasesViewBase {
 		this.scheduleDailyNoteHeaderLinkUpdate();
 		this.scheduleRefreshButtonIconUpdate();
 
-		// After calendar creation, navigate to the pending daily-note date if set,
-		// or to today's date when a diary note is already open.
+		// After calendar creation, make sure the calendar shows the date of the
+		// note that embeds it. The date was already used as the initial date, but
+		// re-applying it keeps the view correct when FullCalendar normalises the
+		// visible range (for example for week or month based views).
 		const win = this.containerEl.ownerDocument.defaultView || window;
 		win.setTimeout(() => {
-			let targetDate = this._pendingDailyNoteDate || this.plugin.lastDailyNoteDate;
-
-			// If no tracked date, scan open leaves for a daily note
-			if (!targetDate) {
-				this.app.workspace.iterateAllLeaves?.((leaf) => {
-					if (targetDate) return;
-					const path = (leaf as { view?: { file?: { path?: string } } }).view?.file?.path;
-					if (!path) return;
-					const resolvedDate = this.plugin.resolveDailyNoteDate(path);
-					if (resolvedDate) {
-						targetDate = resolvedDate;
-					}
-				});
+			if (this._pendingDailyNoteDate) {
+				const pendingDate = this._pendingDailyNoteDate;
+				this._pendingDailyNoteDate = null;
+				this.navigateToDailyNote(pendingDate);
+				return;
 			}
 
-			if (targetDate) {
-				this.plugin.lastDailyNoteDate = targetDate;
-				this.navigateToDailyNote(targetDate);
-				this._pendingDailyNoteDate = null;
+			if (this.getHostDailyNoteDate()) {
+				this.applyHostDailyNoteDate();
+				return;
+			}
+
+			const trackedDate = this.plugin.lastDailyNoteDate;
+			if (trackedDate && trackedDate !== this._appliedDailyNoteDate) {
+				this.navigateToDailyNote(trackedDate);
 			}
 		}, 200);
 	}
@@ -1875,6 +1908,49 @@ export class CalendarView extends BasesViewBase {
 		}
 
 		return null;
+	}
+
+	/**
+	 * Resolve the daily-note date of the markdown file that embeds this calendar,
+	 * or null when this calendar is not embedded in a note that represents a day.
+	 */
+	private getHostDailyNoteDate(): string | null {
+		const hostFile = this.getContainingMarkdownFile();
+		if (!hostFile) {
+			return null;
+		}
+
+		return this.plugin.resolveDailyNoteDate(hostFile.path);
+	}
+
+	/**
+	 * Navigate to the date of the embedding note when it changed. Only runs on
+	 * an actual host-note change, so manual navigation within a note is kept.
+	 */
+	private applyHostDailyNoteDate(): void {
+		const hostDate = this.getHostDailyNoteDate();
+		if (hostDate) {
+			this._hostDateRetryCount = 0;
+			if (hostDate === this._appliedDailyNoteDate) {
+				return;
+			}
+
+			this.navigateToDailyNote(hostDate);
+			return;
+		}
+
+		// The host file is not resolvable yet when an embed renders before it is
+		// attached to its note. Retry briefly rather than falling back to today.
+		if (!this.containerEl.closest(".internal-embed, .markdown-embed")) {
+			return;
+		}
+		if (this._hostDateRetryCount >= CalendarView.HOST_DATE_MAX_RETRIES) {
+			return;
+		}
+
+		this._hostDateRetryCount += 1;
+		const win = this.containerEl.ownerDocument.defaultView || window;
+		win.setTimeout(() => this.applyHostDailyNoteDate(), 150);
 	}
 
 	private getContainingMarkdownFile(): Nullable<TFile> {
@@ -3123,9 +3199,14 @@ export class CalendarView extends BasesViewBase {
 	 * calendar recreations.
 	 */
 	navigateToDailyNote(dateStr: string): void {
-		// Remember the date until the calendar exists, so it can be applied once
-		// initialisation finishes. Re-applying on every render would override a
-		// view the user picked afterwards.
+		// A calendar embedded in a note follows that note. Ignore dates pushed
+		// for a different diary note so switching notes never drags this embed
+		// to an unrelated day.
+		const hostDate = this.getHostDailyNoteDate();
+		if (hostDate && hostDate !== dateStr) {
+			return;
+		}
+
 		if (!this.calendar) {
 			this._pendingDailyNoteDate = dateStr;
 			return;
@@ -3133,16 +3214,19 @@ export class CalendarView extends BasesViewBase {
 		try {
 			const date = new Date(dateStr + "T00:00:00");
 			if (Number.isNaN(date.getTime())) return;
-			// Switch to the list view only the first time a diary note opens this
-			// calendar. Later diary-note events just move the date so a view the
-			// user selected manually is kept.
+			// Switch to the list view once per session. Later diary-note events
+			// only move the date so a view the user selected manually is kept.
 			if (!this._dailyNoteViewApplied) {
-				this._dailyNoteViewApplied = true;
-				if (this.calendar.view?.type !== "listWeek") {
-					this.calendar.changeView("listWeek");
+				if (!CalendarView.dailyNoteViewAppliedOnce) {
+					CalendarView.dailyNoteViewAppliedOnce = true;
+					this._dailyNoteViewApplied = true;
+					if (this.calendar.view?.type !== "listWeek") {
+						this.calendar.changeView("listWeek");
+					}
 				}
 			}
 			this.calendar.gotoDate(date);
+			this._appliedDailyNoteDate = dateStr;
 		} catch (e) {
 			tasknotesLogger.debug("[CalendarView] Failed to navigate to daily note:", {
 				category: "provider",

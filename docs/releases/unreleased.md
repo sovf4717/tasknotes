@@ -53,4 +53,4 @@ When a change has user-facing documentation, include a canonical tasknotes.dev l
 
 - Manual reordering in Task List and Kanban views sorted by manual order in descending direction now places a task on the correct side of its neighbour when the group contains only one other task.
 
-- Calendar and agenda views now follow the note you open: a note named after a date (for example `2026-10-21`, in any folder) navigates to that date, and a note inside the diary folder navigates to today. The calendar switches to the list view only the first time this happens, so a view chosen manually afterwards is kept.
+- Calendar and agenda views now follow the note you open: a note named after a date (for example `2026-10-21`, in any folder) navigates to that date, and a note inside the diary folder navigates to today. Calendars embedded in a note (such as the default Agenda base inside diary notes) open directly on the embedding note's date instead of today, and each embed follows only its own host note when you switch between diary notes. The calendar switches to the list view only once per session, so a view chosen manually afterwards is kept.
