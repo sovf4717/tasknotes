@@ -41,15 +41,6 @@ import {
 	getNextUncompletedOccurrence,
 	updateToNextScheduledOccurrence,
 } from "../core/recurrence";
-import { getProjectDisplayName, parseLinkToPath } from "../utils/linkUtils";
-import { getNextUncompletedOccurrence, updateToNextScheduledOccurrence } from "../core/recurrence";
-=======
-import {
-	addDTSTARTToRecurrenceRule,
-	getNextUncompletedOccurrence,
-	updateToNextScheduledOccurrence,
-} from "../core/recurrence";
->>>>>>> upstream/main
 import { processFolderTemplate, TaskTemplateData, FolderTemplateOptions } from "../utils/folderTemplateProcessor";
 
 import TaskNotesPlugin from "../main";
