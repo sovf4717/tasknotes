@@ -36,7 +36,20 @@ import {
 	getDatePart,
 } from "../utils/dateUtils";
 import { getProjectDisplayName, parseLinkToPath } from "../utils/linkUtils";
+import {
+	addDTSTARTToRecurrenceRule,
+	getNextUncompletedOccurrence,
+	updateToNextScheduledOccurrence,
+} from "../core/recurrence";
+import { getProjectDisplayName, parseLinkToPath } from "../utils/linkUtils";
 import { getNextUncompletedOccurrence, updateToNextScheduledOccurrence } from "../core/recurrence";
+=======
+import {
+	addDTSTARTToRecurrenceRule,
+	getNextUncompletedOccurrence,
+	updateToNextScheduledOccurrence,
+} from "../core/recurrence";
+>>>>>>> upstream/main
 import { processFolderTemplate, TaskTemplateData, FolderTemplateOptions } from "../utils/folderTemplateProcessor";
 
 import TaskNotesPlugin from "../main";
@@ -1010,7 +1023,7 @@ export class TaskService {
 
 		const plan = buildMaterializedOccurrenceSkipPlan({
 			occurrenceTask: freshOccurrence,
-			parentTask,
+			parentTask: this.withRecurrenceStart(parentTask),
 			skippedStatus,
 			currentTimestamp: getCurrentTimestamp(),
 			maintainDueDateOffsetInRecurring: this.plugin.settings.maintainDueDateOffsetInRecurring,
@@ -1056,7 +1069,7 @@ export class TaskService {
 
 		const plan = buildMaterializedOccurrenceUnskipPlan({
 			occurrenceTask: freshOccurrence,
-			parentTask,
+			parentTask: this.withRecurrenceStart(parentTask),
 			activeStatus: this.plugin.settings.defaultTaskStatus,
 			currentTimestamp: getCurrentTimestamp(),
 		});
@@ -1116,7 +1129,7 @@ export class TaskService {
 		let plan = isCompleted
 			? buildMaterializedOccurrenceCompletePlan({
 					occurrenceTask: updatedOccurrence,
-					parentTask,
+					parentTask: this.withRecurrenceStart(parentTask),
 					completedStatus: this.normalizeStatusValue(newValue),
 					currentTimestamp,
 					completionDate:
@@ -1126,7 +1139,7 @@ export class TaskService {
 				})
 			: buildMaterializedOccurrenceUncompletePlan({
 					occurrenceTask: originalOccurrence,
-					parentTask,
+					parentTask: this.withRecurrenceStart(parentTask),
 					activeStatus: this.normalizeStatusValue(newValue),
 					currentTimestamp,
 				});
@@ -1239,6 +1252,19 @@ export class TaskService {
 			materializeNextDate: materializeNextDate || undefined,
 			changed: true,
 		};
+	}
+
+	/**
+	 * The model's occurrence plans add DTSTART themselves with a strict parser that rejects
+	 * minute-precision times ("2025-12-30T09:00"), so add it here through the app's
+	 * normalizing wrapper first. Only the recurrence changes; scheduled keeps its format. #2328
+	 */
+	private withRecurrenceStart(task: TaskInfo): TaskInfo {
+		if (typeof task.recurrence !== "string" || !task.recurrence || task.recurrence.includes("DTSTART:")) {
+			return task;
+		}
+		const recurrence = addDTSTARTToRecurrenceRule(task);
+		return recurrence ? { ...task, recurrence } : task;
 	}
 
 	private getRescheduledOccurrenceProgressionDate(occurrenceTask: TaskInfo): string | null {
