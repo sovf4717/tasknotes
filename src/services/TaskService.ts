@@ -35,6 +35,11 @@ import {
 	getCurrentTimestamp,
 	getDatePart,
 } from "../utils/dateUtils";
+import {
+	buildCompletedAtValue,
+	COMPLETED_AT_INSTANCES_PROPERTY,
+	filterCompletedAtInstancesBefore,
+} from "../utils/completedAtInstances";
 import { getProjectDisplayName, parseLinkToPath } from "../utils/linkUtils";
 import {
 	addDTSTARTToRecurrenceRule,
@@ -718,7 +723,35 @@ export class TaskService {
 					this.plugin.fieldMapper.toUserField("googleCalendarMovedOriginalDates"),
 					updatePlan.updatedTask.googleCalendarMovedOriginalDates
 				);
+			if (rescheduleClearedOccurrence) {
+				this.writeOptionalFrontmatterField(
+					frontmatter,
+					this.plugin.fieldMapper.toUserField("completeInstances"),
+					updatePlan.updatedTask.complete_instances
+				);
+				this.writeOptionalFrontmatterField(
+					frontmatter,
+					this.plugin.fieldMapper.toUserField("skippedInstances"),
+					updatePlan.updatedTask.skipped_instances
+				);
 
+				// Drop the recorded completion times of the removed occurrences so
+				// each remaining day keeps its own independent time.
+				const clearDateStr = getDatePart(String(updatePlan.normalizedValue));
+				const remainingCompletedAtInstances = filterCompletedAtInstancesBefore(
+					frontmatter[COMPLETED_AT_INSTANCES_PROPERTY],
+					clearDateStr
+				);
+				if (remainingCompletedAtInstances.length > 0) {
+					frontmatter[COMPLETED_AT_INSTANCES_PROPERTY] = remainingCompletedAtInstances;
+				} else {
+					delete frontmatter[COMPLETED_AT_INSTANCES_PROPERTY];
+				}
+				updatePlan.updatedTask.completedAtInstances =
+					remainingCompletedAtInstances.length > 0
+						? remainingCompletedAtInstances
+						: undefined;
+			}
 				if (rescheduleClearedOccurrence) {
 					this.writeOptionalFrontmatterField(
 						frontmatter,
@@ -1984,7 +2017,8 @@ export class TaskService {
 				googleCalendarExceptionOriginalScheduledField,
 				googleCalendarMovedOriginalDatesField,
 				completedAtField: COMPLETED_AT_PROPERTY,
-				completedAtValue: getCurrentDateTimeString(),
+				completedAtValue: buildCompletedAtValue(recurringPlan.dateStr),
+				completedAtInstancesField: COMPLETED_AT_INSTANCES_PROPERTY,
 				plan: recurringPlan,
 			});
 		});

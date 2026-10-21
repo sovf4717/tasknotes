@@ -9,6 +9,12 @@ import {
 	applyPropertyTaskIdentifier,
 	getFrontmatterTags,
 } from "../../utils/taskIdentificationFrontmatter";
+import {
+	buildCompletedAtValue,
+	COMPLETED_AT_INSTANCES_PROPERTY,
+	normalizeCompletedAtInstances,
+	upsertCompletedAtInstanceList,
+} from "../../utils/completedAtInstances";
 
 export type TaskUpdateInput = Partial<TaskInfo> & {
 	details?: string;
@@ -300,6 +306,39 @@ export function applyTaskUpdateFrontmatterChange({
 
 	if (updates.status !== undefined) {
 		updateCompletedDateInFrontmatter(frontmatter, updates.status, !!originalTask.recurrence);
+	}
+
+	// Keep the per-occurrence completion times in sync with the instance
+	// history: drop times for dates that are no longer completed and record
+	// the current local time for dates that just became completed, so each
+	// day keeps its own independent completion time.
+	if (
+		originalTask.recurrence &&
+		(Object.prototype.hasOwnProperty.call(updates, "complete_instances") ||
+			Object.prototype.hasOwnProperty.call(updates, "skipped_instances"))
+	) {
+		const nextCompleteDates = new Set(
+			getStringArray(updates.complete_instances ?? originalTask.complete_instances)
+		);
+		let completionTimes = normalizeCompletedAtInstances(
+			frontmatter[COMPLETED_AT_INSTANCES_PROPERTY]
+		);
+		const recordedDates = new Set(completionTimes.map((entry) => entry.date));
+		completionTimes = completionTimes.filter((entry) => nextCompleteDates.has(entry.date));
+		for (const dateStr of nextCompleteDates) {
+			if (!recordedDates.has(dateStr)) {
+				completionTimes = upsertCompletedAtInstanceList(
+					completionTimes,
+					dateStr,
+					buildCompletedAtValue(dateStr)
+				);
+			}
+		}
+		if (completionTimes.length > 0) {
+			frontmatter[COMPLETED_AT_INSTANCES_PROPERTY] = completionTimes;
+		} else {
+			delete frontmatter[COMPLETED_AT_INSTANCES_PROPERTY];
+		}
 	}
 
 	if (taskIdentification.method === "property") {

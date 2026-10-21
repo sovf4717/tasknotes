@@ -19,6 +19,10 @@ import {
 	applyGoogleCalendarRecurringExceptionCleanup,
 	resolveGoogleCalendarRecurringExceptionAfterCurrentInstanceAction,
 } from "./googleCalendarRecurringExceptions";
+import {
+	normalizeCompletedAtInstances,
+	upsertCompletedAtInstanceList,
+} from "../../utils/completedAtInstances";
 
 export interface BuildRecurringTaskCompletePlanInput {
 	freshTask: TaskInfo;
@@ -64,6 +68,13 @@ export interface ApplyRecurringTaskCompleteFrontmatterInput {
 	plan: RecurringTaskCompletePlan;
 	completedAtField?: string;
 	completedAtValue?: string;
+	/**
+	 * Frontmatter field that stores per-occurrence completion times
+	 * (`completedAtInstances`). When provided, completing an occurrence adds
+	 * its local time and un-completing removes it, so each day keeps its own
+	 * recorded completion time.
+	 */
+	completedAtInstancesField?: string;
 }
 
 export interface ApplyRecurringTaskSkippedFrontmatterInput {
@@ -339,6 +350,7 @@ export function applyRecurringTaskCompleteFrontmatterChange({
 	plan,
 	completedAtField,
 	completedAtValue,
+	completedAtInstancesField,
 }: ApplyRecurringTaskCompleteFrontmatterInput): void {
 	if (!frontmatter[completeInstancesField]) {
 		frontmatter[completeInstancesField] = [];
@@ -365,6 +377,32 @@ export function applyRecurringTaskCompleteFrontmatterChange({
 		} else if (frontmatter[completedAtField]) {
 			delete frontmatter[completedAtField];
 		}
+	}
+
+	// Keep each occurrence's own completion time in the per-date history so
+	// completing one day never overwrites another day's recorded time.
+	if (completedAtInstancesField) {
+		let completedAtInstances = normalizeCompletedAtInstances(
+			frontmatter[completedAtInstancesField]
+		);
+		if (plan.newComplete && completedAtValue) {
+			completedAtInstances = upsertCompletedAtInstanceList(
+				completedAtInstances,
+				plan.dateStr,
+				completedAtValue
+			);
+		} else if (!plan.newComplete) {
+			completedAtInstances = completedAtInstances.filter(
+				(entry) => entry.date !== plan.dateStr
+			);
+		}
+		if (completedAtInstances.length > 0) {
+			frontmatter[completedAtInstancesField] = completedAtInstances;
+		} else {
+			delete frontmatter[completedAtInstancesField];
+		}
+		plan.updatedTask.completedAtInstances =
+			completedAtInstances.length > 0 ? completedAtInstances : undefined;
 	}
 
 	frontmatter[skippedInstancesField] = plan.updatedTask.skipped_instances || [];

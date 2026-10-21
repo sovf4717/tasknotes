@@ -6,6 +6,7 @@ import { DEFAULT_INTERNAL_VISIBLE_PROPERTIES } from "../settings/defaults";
 import { calculateTotalTimeSpent, getFiniteRecurringInstanceCount } from "../utils/helpers";
 import { filterTaskIdentificationTags } from "../utils/taskTagFiltering";
 import {
+	formatDateForStorage,
 	formatDateTimeForDisplay,
 	getDatePart,
 	getTimePart,
@@ -40,6 +41,12 @@ const tasknotesLogger = createTaskNotesLogger({ tag: "Ui/TaskCardProperties" });
 
 export interface TaskCardPropertyOptions {
 	propertyLabels?: TaskCardPresentationOptions["propertyLabels"];
+	/**
+	 * The date this card represents (for example a calendar day in the agenda
+	 * list view). Used to resolve per-day property values such as the
+	 * recorded completion time of that specific day's occurrence.
+	 */
+	targetDate?: Date;
 }
 
 function tTaskCard(
@@ -558,7 +565,11 @@ export function renderPropertyMetadata(
 	plugin: TaskNotesPlugin,
 	options: TaskCardPropertyOptions = {}
 ): HTMLElement | null {
-	const value = getTaskCardPropertyValue(task, propertyId, plugin);
+	const value = getTaskCardPropertyValue(task, propertyId, plugin, {
+		completedAtTimeDate: options?.targetDate
+			? formatDateForStorage(options.targetDate)
+			: undefined,
+	});
 
 	if (!hasValidValue(value)) {
 		return null;

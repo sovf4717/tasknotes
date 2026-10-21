@@ -479,6 +479,7 @@ export interface TaskInfo {
 	occurrence_future_horizon?: string; // ISO duration override for rolling materialization future horizon
 	completedDate?: string; // Date (YYYY-MM-DD) when task was marked as done
 	completedAt?: string; // Local date-time (YYYY-MM-DDTHH:mm:ss) when task was marked as done
+	completedAtInstances?: CompletedAtInstance[]; // Per-occurrence completion times for recurring tasks, each day keeps its own time
 	timeEstimate?: number; // Estimated time in minutes
 	timeEntries?: TimeEntry[]; // Individual time tracking sessions
 	totalTrackedTime?: number; // Total tracked time in minutes (calculated from timeEntries)
@@ -507,6 +508,16 @@ export interface TaskCreationData extends Partial<TaskInfo> {
 	creationContext?: "inline-conversion" | "manual-creation" | "modal-inline-creation" | "api" | "import" | "ics-event"; // Context for folder determination
 	customFrontmatter?: Record<string, unknown>; // Custom frontmatter properties (including user fields)
 	occurrenceFilenameTemplate?: string; // Resolved filename template for a materialized occurrence (creation-only)
+}
+
+/**
+ * Recorded completion time of a single recurring-task occurrence.
+ * `date` is the occurrence date (YYYY-MM-DD) and `at` is the local
+ * completion date-time (YYYY-MM-DDTHH:mm) the user completed that day.
+ */
+export interface CompletedAtInstance {
+	date: string; // Occurrence date (YYYY-MM-DD)
+	at: string; // Local date-time (YYYY-MM-DDTHH:mm) when that occurrence was completed
 }
 
 export interface TimeEntry {
