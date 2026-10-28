@@ -1,6 +1,5 @@
 import type { TaskInfo } from "../types";
 import { clearStaticStyleClasses } from "../utils/staticStyleClasses";
-import { getCurrentDateTimeString } from "../utils/dateUtils";
 import {
 	applyGroupPropertyMutation,
 	moveGroupListValue,
@@ -496,7 +495,7 @@ export function planKanbanStatusDerivativeUpdate({
 	}
 
 	return {
-		// The "None" column clears status; never evaluate the label as a status value.
+		// The NONE_GROUP_KEY column clears status; never evaluate the label as a status value.
 		statusValue: normalizeGroupValue(statusValue) ?? "",
 		isRecurring: !!task?.recurrence,
 		dateModifiedField,
@@ -551,12 +550,6 @@ export function planKanbanDropSideEffect({
 	updatedTask.completedDate = statusIsCompleted
 		? new Date().toISOString().split("T")[0]
 		: undefined;
-	updatedTask.completedAt = statusIsCompleted
-		? getCurrentDateTimeString()
-		: undefined;
-			typeof statusValue === "string" && isCompletedStatus(statusValue)
-				? new Date().toISOString().split("T")[0]
-				: undefined;
 	}
 
 	const changedTaskProp = plan.changedTaskProp as keyof TaskInfo;
@@ -568,7 +561,7 @@ export function planKanbanDropSideEffect({
 	};
 }
 
-// Match the frontmatter write: dropping into "None" deletes the property.
+// Match the frontmatter write: dropping into NONE_GROUP_KEY deletes the property.
 function toKanbanDropTaskValue(value: unknown): unknown {
 	return typeof value === "string" ? (normalizeGroupValue(value) ?? undefined) : value;
 }
