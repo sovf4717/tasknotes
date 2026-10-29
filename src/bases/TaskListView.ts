@@ -10,7 +10,12 @@ import type { BasesView, BasesViewFactory } from "obsidian";
 import TaskNotesPlugin from "../main";
 import { BasesViewBase } from "./BasesViewBase";
 import { readBasesViewConfigValue, readBasesViewPropertyId } from "./basesViewConfig";
-import { sortTaskInfosByBasesSortConfig } from "./basesSortConfig";
+import {
+	compareBasesSortValues,
+	normalizeBasesSortConfig,
+	resolveBasesSortValue,
+	sortTaskInfosByBasesSortConfig,
+} from "./basesSortConfig";
 import { TaskInfo } from "../types";
 import { identifyTaskNotesFromBasesData } from "./helpers";
 import { createTaskCard, showTaskContextMenu, type TaskCardOptions } from "../ui/TaskCard";
@@ -2051,6 +2056,68 @@ export class TaskListView extends BasesViewBase {
 		return properties;
 	}
 
+	/**
+	 * 按排序配置对子组 key 重排，使子组之间的显示顺序跟随用户配置的 sort。
+	 *
+	 * 原理：当 Bases 视图的某一排序列恰好等于当前子组属性（subGroupPropertyId）时，
+	 * 各子组应按该列的值排序，而不是按 Map 插入顺序（首次遇到顺序）。
+	 * 对每个子组取第一个任务（该桶内的任务已按排序配置排好序），用 resolveBasesSortValue
+	 * 算出排序列上的值，再按该值（结合方向）对所有子组重排，重建 Map（桶内顺序不变）。
+	 * 若排序配置里没有匹配子组属性的列，则原样返回，保持既有行为。
+	 */
+	private sortSubGroupKeysBySortConfig(
+		groupedTasks: Map<string, TaskInfo[]>,
+		pathToProps: ReadonlyMap<string, Record<string, unknown>>,
+		sortConfig: unknown
+	): Map<string, TaskInfo[]> {
+		// 第一步：把排序配置归一化成标准化列列表。
+		// normalizeBasesSortConfig 把各种形状（单对象/数组/null）统一成 NormalizedBasesSortColumn[]，
+		// 每项含 column（去前缀后的列名）和 direction（"asc"/"desc"）。
+		// sortConfig 来自 BasesViewConfig.getSort()，实际结构与 RawBasesSortConfig 兼容，用断言绕过类型检查。
+		const sortColumns = normalizeBasesSortConfig(sortConfig as Parameters<typeof normalizeBasesSortConfig>[0]);
+
+		// 第二步：找第一个匹配子组属性的排序列。
+		// 子组属性（this.subGroupPropertyId）是带前缀的 Bases 属性 ID（如 "note.status"），
+		// 排序列里的 column 是去前缀后的叶子名（如 "status"），两边都去前缀再比较才能匹配。
+		const subGroupClean = this.subGroupPropertyId?.replace(/^(note\.|task\.|file\.|formula\.)/, "") ?? "";
+		const matchingColumn = sortColumns.find(
+			(col) => col.column.replace(/^(note\.|task\.|file\.|formula\.)/, "") === subGroupClean
+		);
+
+		// 没有匹配的排序列（排序不是按子组属性排的），原样返回，不改变 Map 顺序。
+		// 这保证"按别的列排序时，子组顺序仍跟随 Bases 引擎预排序"的既有行为不变。
+		if (!matchingColumn) return groupedTasks;
+
+		// 第三步：取每个子组第一个任务（桶内已排好序），算出该组在排序列上的"代表值"。
+		// 同一子组里所有任务在该列上的值应相同（按该列分桶），取第一个即可，避免重复计算。
+		const keyComparator = (keyA: string, keyB: string): number => {
+			const tasksA = groupedTasks.get(keyA) ?? [];
+			const tasksB = groupedTasks.get(keyB) ?? [];
+			const taskA = tasksA[0];
+			const taskB = tasksB[0];
+			if (!taskA || !taskB) return 0;
+
+			// 用 resolveBasesSortValue 算两个任务在排序列上的值。
+			// dataItem 传 undefined，因为子组属性是 frontmatter 原始属性，switch 分支能直接从 TaskInfo 读到。
+			const valueA = resolveBasesSortValue(taskA, undefined, matchingColumn.column);
+			const valueB = resolveBasesSortValue(taskB, undefined, matchingColumn.column);
+
+			// 按升序基准比较；降序时取反，让值大的子组排在前面，符合用户直觉。
+			const comparison = compareBasesSortValues(valueA, valueB);
+			return matchingColumn.direction === "desc" ? -comparison : comparison;
+		};
+
+		// 第四步：对子组 key 数组按比较器排序，按新顺序重建 Map。
+		// Map 迭代顺序 = 插入顺序，重建时按排序后 key 顺序 set，即可让后续 for...of 按排序顺序访问。
+		const sortedKeys = Array.from(groupedTasks.keys()).sort(keyComparator);
+		const sortedMap = new Map<string, TaskInfo[]>();
+		for (const key of sortedKeys) {
+			// 取原始 Map 里该 key 的任务数组（引用不变，桶内顺序保持不变），写进新 Map。
+			sortedMap.set(key, groupedTasks.get(key)!);
+		}
+		return sortedMap;
+	}
+
 	private syncGroupedDragMetadata(items: TaskListRenderItem[]): void {
 		this.taskGroupKeys.clear();
 		this.movementSubGroupKeys.clear();
@@ -2717,8 +2784,20 @@ export class TaskListView extends BasesViewBase {
 		this.setSortScopeCandidatePaths(buildTaskListSubPropertyScopePaths(allGroupedTasks));
 		this.applyGroupingSnapshot(this.createSubPropertyHierarchySnapshot(groupedTasks));
 
-		// Build flat items array (treat sub-groups as primary groups)
-		const items = buildTaskListSubPropertyRenderItems(groupedTasks, this.collapsedGroups);
+// 修复：子组 key 的顺序是 Map 的插入顺序（第一次遇到该 key 的顺序），
+		// 而不是按排序配置排列的顺序。当排序列恰好是子组属性本身时，
+		// 子组之间的相对顺序应该是排序顺序，而非首次遇到顺序。
+		// 这里把排序配置传给 sortSubGroupKeysBySortConfig，让它把子组 key 按该列的值重排。
+		// 如果排序不是按子组属性排的（matchingColumn 为 null），它原样返回，行为不变。
+		const subGroupSortConfig = this.dataAdapter.getSortConfig?.();
+		const sortedGroupedTasks = this.sortSubGroupKeysBySortConfig(
+			groupedTasks,
+			pathToProps,
+			subGroupSortConfig
+		);
+
+		// 构建扁平渲染项数组（把子组当作主组处理）
+		const items = buildTaskListSubPropertyRenderItems(sortedGroupedTasks, this.collapsedGroups);
 
 		// Decide whether to use virtual scrolling
 		const shouldUseVirtualScrolling = items.length >= this.VIRTUAL_SCROLL_THRESHOLD;
@@ -3479,7 +3558,19 @@ export class TaskListView extends BasesViewBase {
 		const dataItems = this.dataAdapter.extractDataItems();
 		computeBasesFormulas(this.data, dataItems);
 		const taskNotes = await identifyTaskNotesFromBasesData(dataItems, this.plugin);
-		const filteredTasks = this.applySearchFilter(taskNotes);
+		// 修复：refreshGroupedView 原来没有调用 sortTaskInfosByBasesSortConfig，
+		// 导致展开/折叠分组后任务顺序丢失（用户看到的"排序不起作用"的一个根因）。
+		// 这里补上兜底排序，和 render() 方法里的逻辑保持一致：
+		// 把 Bases 引擎预排好的 data.data 再按视图的 sort 配置排一次，
+		// 保证公式列（formula.*）或自定义列的排序也能真正生效。
+		const sortConfig = this.dataAdapter.getSortConfig?.();
+		const orderedTaskNotes = sortTaskInfosByBasesSortConfig(
+			taskNotes,
+			dataItems,
+			sortConfig,
+			this.plugin
+		);
+		const filteredTasks = this.applySearchFilter(orderedTaskNotes);
 		this.setExpandedRelationshipTaskScope(filteredTasks);
 		const renderTasks = this.getTopLevelRenderTasks(filteredTasks);
 		this.setCurrentVisibleTaskPaths(renderTasks);
@@ -3499,8 +3590,16 @@ export class TaskListView extends BasesViewBase {
 				this.subGroupPropertyId,
 				pathToProps
 			);
-			this.applyGroupingSnapshot(this.createSubPropertyHierarchySnapshot(groupedTasks));
-			items = buildTaskListSubPropertyRenderItems(groupedTasks, this.collapsedGroups);
+			// 修复：对子组 key 按排序配置重排，和 renderGroupedBySubProperty 保持一致。
+			// 原来直接用 groupedTasks 的 Map 插入顺序，导致子组顺序不跟随排序配置。
+			// 当排序列恰好是子组属性本身时，子组之间的相对顺序应该是排序顺序而非首次遇到顺序；
+			// 若排序不是按子组属性排的，sortSubGroupKeysBySortConfig 会原样返回，行为不变。
+			const sortedGroupedTasks = this.sortSubGroupKeysBySortConfig(
+				groupedTasks,
+				pathToProps,
+				this.dataAdapter.getSortConfig?.()
+			);
+			items = buildTaskListSubPropertyRenderItems(sortedGroupedTasks, this.collapsedGroups);
 		} else {
 			const groups = this.dataAdapter.getGroupedData() as TaskListGroup[];
 			this.applyGroupingSnapshot(this.createGroupedHierarchySnapshot(groups, renderTasks));

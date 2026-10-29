@@ -67,6 +67,9 @@ When a change has user-facing documentation, include a canonical tasknotes.dev l
 
 ## Fixed
 
+- Task List view sort order was lost when expanding or collapsing groups: the refresh path (refreshGroupedView) skipped the fallback sort pass that render() applies, so the displayed order no longer followed the Bases view sort config. The refresh path now applies the same fallback sort. See [Task List](https://tasknotes.dev/views/task-list/).
+- Sub-property group ordering in Task List view did not follow the view sort config when the sort column matched the sub-group property itself: groups were rendered in first-encounter order instead of sorted order. A new sortSubGroupKeysBySortConfig pass re-orders sub-group keys by the matching sort column's value and direction, leaving behaviour unchanged when sorting by a different column. See [Task List](https://tasknotes.dev/views/task-list/).
+
 - Recurring tasks no longer leak the latest completion time into other days in the "Completed at" column. Each day of a recurring task now shows the time recorded for that day's own occurrence (for example a day's card in the Agenda list view shows that day's time, and a diary note shows the system date's completion time); a day without its own recorded completion time no longer shows the most recent occurrence's time.
 
 - Directly opening a TaskNotes base file (for example `agenda-default.base`) failed to load the view: the calendar view read the Bases-assigned `app` reference inside its load lifecycle, before Bases had assigned it. The calendar now always uses the plugin's app reference.
