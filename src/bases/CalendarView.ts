@@ -1078,10 +1078,22 @@ export class CalendarView extends BasesViewBase {
 			const filteredTasks = this.applySearchFilter(taskNotes);
 			this.currentTasks = filteredTasks;
 			this.identityTasks = await this.plugin.cacheManager.getAllTasks();
+			// Bases data.data 的数组顺序就是 Bases 引擎按 sort 配置排好后的顺序，
+			// 每个条目的数组索引即为该条目在排序结果中的位置（sort index）。
+			// 把 path → sortIndex 的映射写进 basesSortIndexByPath，
+			// 这样 buildTaskEvents / buildAllEvents 里的
+			// applyBasesSortIndexesToCalendarEvents 就能把排序索引赋到事件上，
+			// 日历的 eventOrder（含 TASKNOTES_CALENDAR_SORT_INDEX）才会真正生效。
+			// 修复：原来 basesSortIndexByPath 从未被填充（没有 .set 调用），
+			// 导致 applyBasesSortIndexesToCalendarEvents 因 size === 0 直接 return，
+			// Bases 排序（如 priorityWeight）在日历/Agenda 列表里完全不生效。
 			if (this.data?.data) {
-				for (const entry of this.data.data) {
+				this.basesSortIndexByPath.clear();
+				for (let index = 0; index < this.data.data.length; index++) {
+					const entry = this.data.data[index];
 					if (entry.file?.path) {
 						this.basesEntryByPath.set(entry.file.path, entry as BasesEntryWithGetValue);
+						this.basesSortIndexByPath.set(entry.file.path, index);
 					}
 				}
 			}
