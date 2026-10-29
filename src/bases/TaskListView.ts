@@ -10,6 +10,7 @@ import type { BasesView, BasesViewFactory } from "obsidian";
 import TaskNotesPlugin from "../main";
 import { BasesViewBase } from "./BasesViewBase";
 import { readBasesViewConfigValue, readBasesViewPropertyId } from "./basesViewConfig";
+import { sortTaskInfosByBasesSortConfig } from "./basesSortConfig";
 import { TaskInfo } from "../types";
 import { identifyTaskNotesFromBasesData } from "./helpers";
 import { createTaskCard, showTaskContextMenu, type TaskCardOptions } from "../ui/TaskCard";
@@ -600,6 +601,18 @@ export class TaskListView extends BasesViewBase {
 
 			const taskNotes = await identifyTaskNotesFromBasesData(dataItems, this.plugin);
 
+			// 兜底排序：Bases 引擎理论上会把 data.data 按 .base 文件的 sort 配置预排好，
+			// 但对公式列（formula.*）或自定义列的预排序并不总能生效，导致视图里"排序不起作用"。
+			// 这里再按视图的排序配置把 taskNotes 排一次，保证无论是平铺还是分组渲染，
+			// 展示顺序都真正跟随用户配置的 sort（分组渲染会按同一顺序逐个分桶，组内顺序也因此被保持）。
+			const sortConfig = this.dataAdapter.getSortConfig?.();
+			const orderedTaskNotes = sortTaskInfosByBasesSortConfig(
+				taskNotes,
+				dataItems,
+				sortConfig,
+				this.plugin
+			);
+
 			if (taskNotes.length === 0) {
 				this.clearAllTaskElements();
 				this.sortScopeTaskPaths.clear();
@@ -618,20 +631,20 @@ export class TaskListView extends BasesViewBase {
 				if (!this.lastRenderWasGrouped) {
 					this.clearAllTaskElements();
 				}
-				await this.renderGroupedBySubProperty(taskNotes);
+				await this.renderGroupedBySubProperty(orderedTaskNotes);
 				this.lastRenderWasGrouped = true;
 			} else if (isGrouped) {
 				if (!this.lastRenderWasGrouped) {
 					this.clearAllTaskElements();
 				}
-				await this.renderGrouped(taskNotes);
+				await this.renderGrouped(orderedTaskNotes);
 				this.lastRenderWasGrouped = true;
 			} else {
 				if (this.lastRenderWasGrouped) {
 					this.clearAllTaskElements();
 				}
 				this.clearGroupingSnapshot();
-				await this.renderFlat(taskNotes);
+				await this.renderFlat(orderedTaskNotes);
 				this.lastRenderWasGrouped = false;
 			}
 			// Check if we have grouped data
