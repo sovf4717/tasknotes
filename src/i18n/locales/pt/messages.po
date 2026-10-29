@@ -3127,6 +3127,11 @@ msgctxt "views.stats.labels.completed"
 msgid "Completed"
 msgstr "Concluídas"
 
+#: src/templates/defaultBasesFiles.ts
+msgctxt "generated Bases column name"
+msgid "Completed at"
+msgstr "Concluído às"
+
 #: src/ui/PropertyVisibilityDropdown.ts
 msgctxt "components.propertyVisibilityDropdown.properties.completedDate"
 msgid "Completed date"
@@ -4434,6 +4439,7 @@ msgstr "Propriedades visíveis padrão"
 #: src/settings/tabs/taskProperties/priorityPropertyCard.ts
 #: src/settings/tabs/taskProperties/statusPropertyCard.ts
 #: src/settings/tabs/taskProperties/tagsPropertyCard.ts
+#: src/settings/tabs/taskPropertiesTab.ts
 msgctxt "settings.taskProperties.propertyCard.default"
 msgid "Default:"
 msgstr "Padrão:"
@@ -5181,6 +5187,11 @@ msgstr "Ativado:"
 msgctxt "components.recurrenceContextMenu.customRecurrenceModal.endAfterOccurrences"
 msgid "End after {count} occurrences"
 msgstr "Terminar após {count} ocorrências"
+
+#: src/settings/tabs/taskPropertiesTab.ts
+msgctxt "settings.taskProperties.properties.recurrenceEndAfterDone.name"
+msgid "End after done"
+msgstr "Finalizar após conclusão"
 
 #: src/components/RecurrenceContextMenu.ts
 msgctxt "components.recurrenceContextMenu.customRecurrenceModal.endCondition"
@@ -6966,6 +6977,11 @@ msgstr "horas"
 msgctxt "settings.integrations.calendarSubscriptions.filenameFormat.description"
 msgid "How filenames are generated for notes created from ICS events"
 msgstr "Como os nomes dos arquivos são gerados para notas criadas a partir de eventos ICS"
+
+#: src/settings/tabs/taskPropertiesTab.ts
+msgctxt "settings.taskProperties.properties.recurrenceEndAfterDone.description"
+msgid "How many days after the done date the task remains open"
+msgstr "Quantos dias após a data de conclusão a tarefa permanece aberta"
 
 #: src/settings/tabs/integrationsTab.ts
 msgctxt "settings.integrations.autoExport.interval.description"
