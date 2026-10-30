@@ -8,6 +8,7 @@ import {
 	type CalendarTask,
 } from "@tasknotes/model/calendar";
 import { normalizeTaskReference } from "@tasknotes/model/operations";
+import { isRecurrenceTerminated } from "../core/recurrence";
 import type { TaskInfo } from "../types";
 import type { CalendarEvent } from "./calendar-core";
 import { colorWithAlpha, isCssVariableColor, normalizeThemeColor } from "../utils/themeColors";
@@ -105,7 +106,7 @@ function projectionTask(task: TaskInfo): CalendarTask {
 		scheduled: task.scheduled,
 		due: task.due,
 		timeEstimate: task.timeEstimate,
-		recurrence: task.recurrence,
+		recurrence: task.recurrence && !isRecurrenceTerminated(task) ? task.recurrence : undefined,
 		recurrence_anchor: task.recurrence_anchor,
 		recurrence_original_date: task.recurrence_original_date,
 		recurrence_parent: task.recurrence_parent,
