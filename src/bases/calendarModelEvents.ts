@@ -8,7 +8,7 @@ import {
 	type CalendarTask,
 } from "@tasknotes/model/calendar";
 import { normalizeTaskReference } from "@tasknotes/model/operations";
-import { isRecurrenceTerminated } from "../core/recurrence";
+import { isRecurrenceTerminated, stripEndAfterDoneFromRecurrence } from "../core/recurrence";
 import type { TaskInfo } from "../types";
 import type { CalendarEvent } from "./calendar-core";
 import { colorWithAlpha, isCssVariableColor, normalizeThemeColor } from "../utils/themeColors";
@@ -98,15 +98,25 @@ export function calendarMaterializedOccurrences(
 
 /** Strip host/formula data and retain stable projection objects across Bases snapshots. */
 function projectionTask(task: TaskInfo): CalendarTask {
+	const terminated = isRecurrenceTerminated(task);
 	return {
 		id: task.id,
 		path: task.path,
 		title: task.title,
 		status: task.status,
-		scheduled: task.scheduled,
-		due: task.due,
+		// When the recurrence has reached its ENDONDONE cap the task will never
+		// recur again.  Drop the stale scheduled/due dates so the model's
+		// showOverdueOnToday mechanism does not resurrect them on later days.
+		scheduled: terminated ? undefined : task.scheduled,
+		due: terminated ? undefined : task.due,
 		timeEstimate: task.timeEstimate,
-		recurrence: task.recurrence && !isRecurrenceTerminated(task) ? task.recurrence : undefined,
+		// Strip ENDONDONE so the rrule parser in the model package does not
+		// reject the rule; termination is already reflected via the fields
+		// above.  When not terminated, keep the recurrence but remove the
+		// non-standard ENDONDONE part that would otherwise break parsing.
+		recurrence: task.recurrence && !terminated
+			? stripEndAfterDoneFromRecurrence(task.recurrence) ?? task.recurrence
+			: undefined,
 		recurrence_anchor: task.recurrence_anchor,
 		recurrence_original_date: task.recurrence_original_date,
 		recurrence_parent: task.recurrence_parent,
