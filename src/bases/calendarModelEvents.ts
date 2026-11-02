@@ -104,17 +104,17 @@ function projectionTask(task: TaskInfo): CalendarTask {
 		path: task.path,
 		title: task.title,
 		status: task.status,
-		// When the recurrence has reached its ENDONDONE cap the task will never
-		// recur again.  Drop the stale scheduled/due dates so the model's
-		// showOverdueOnToday mechanism does not resurrect them on later days.
-		scheduled: terminated ? undefined : task.scheduled,
+		// Keep scheduled so the model can emit recorded events for completed and
+		// skipped instances; drop due so the showOverdueOnToday mechanism does
+		// not resurrect stale due dates on later days.
+		scheduled: task.scheduled,
 		due: terminated ? undefined : task.due,
 		timeEstimate: task.timeEstimate,
 		// Strip ENDONDONE so the rrule parser in the model package does not
-		// reject the rule; termination is already reflected via the fields
-		// above.  When not terminated, keep the recurrence but remove the
-		// non-standard ENDONDONE part that would otherwise break parsing.
-		recurrence: task.recurrence && !terminated
+		// reject the rule.  Keep the recurrence so recorded events are
+		// generated; the projection's post-filter suppresses next-scheduled and
+		// future pattern events for terminated tasks.
+		recurrence: task.recurrence
 			? stripEndAfterDoneFromRecurrence(task.recurrence) ?? task.recurrence
 			: undefined,
 		recurrence_anchor: task.recurrence_anchor,
@@ -130,13 +130,13 @@ function projectionTask(task: TaskInfo): CalendarTask {
 		googleCalendarMovedOriginalDates: task.googleCalendarMovedOriginalDates,
 	};
 }
-
 export class CalendarTaskProjection {
 	private readonly index;
 	private readonly tasks = new Map<string, { signature: string; task: CalendarTask }>();
+	private readonly terminatedTaskIds = new Set<string>();
 	constructor(
 		private context: CalendarContext,
-		private readonly onInvalid: (task: TaskInfo, error: unknown) => void
+		private readonly onInvalid: (task: TaskInfo, error: unknown) => void,
 	) {
 		this.index = createCalendarEntryIndex(context);
 	}
@@ -153,6 +153,7 @@ export class CalendarTaskProjection {
 	setTasks(tasks: readonly TaskInfo[]): void {
 		const ids = new Set(tasks.map(calendarTaskId));
 		for (const id of this.tasks.keys()) if (!ids.has(id)) this.remove(id);
+		this.terminatedTaskIds.clear();
 		for (const task of tasks) this.upsert(task);
 		this.index.setTasks(
 			tasks.flatMap((task) => {
@@ -165,6 +166,8 @@ export class CalendarTaskProjection {
 	upsert(task: TaskInfo): void {
 		const id = calendarTaskId(task);
 		const projected = projectionTask(task);
+		if (isRecurrenceTerminated(task)) this.terminatedTaskIds.add(id);
+		else this.terminatedTaskIds.delete(id);
 		const signature = JSON.stringify(projected);
 		if (this.tasks.get(id)?.signature === signature) return;
 		try {
@@ -190,14 +193,26 @@ export class CalendarTaskProjection {
 	remove(id: string): void {
 		this.tasks.delete(id);
 		this.index.remove(id);
+		this.terminatedTaskIds.delete(id);
 	}
 
 	entriesInRange(range: CalendarRange): CalendarEntry[] {
-		return this.index.entriesInRange(range);
+		const entries = this.index.entriesInRange(range);
+		if (this.terminatedTaskIds.size === 0) return entries;
+		return entries.filter((entry) => {
+			if (!this.terminatedTaskIds.has(entry.taskId)) return true;
+			const projected = this.tasks.get(entry.taskId)?.task;
+			const scheduled = projected?.scheduled;
+			if (!scheduled) return true;
+			// For terminated tasks, hide entries on or after the next scheduled
+			// date so that only past recorded instances remain visible.
+			return entry.start.slice(0, 10) < scheduled.slice(0, 10);
+		});
 	}
 
 	clear(): void {
 		this.tasks.clear();
 		this.index.clear();
+		this.terminatedTaskIds.clear();
 	}
 }

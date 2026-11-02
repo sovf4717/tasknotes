@@ -51,7 +51,9 @@ describe("ENDONDONE terminated recurrence in calendar projection", () => {
 		projection.setTasks([task]);
 		const entries = projection.entriesInRange({ start: "2025-11-01", end: "2025-11-02" });
 
-		// No events: recurrence is terminated, scheduled/due are stripped,
+		// The range starts after the scheduled date, so all recurring entries
+		// are suppressed by the terminated-task filter; only recorded instances
+		// on or before the scheduled date would be visible.
 		// so the showOverdueOnToday mechanism cannot resurrect the task.
 		expect(entries).toEqual([]);
 		expect(invalid).not.toHaveBeenCalled();
@@ -106,5 +108,52 @@ describe("ENDONDONE terminated recurrence in calendar projection", () => {
 
 		expect(entries).toEqual([]);
 		expect(invalid).not.toHaveBeenCalled();
+		});
+
+		it("still shows recorded instances on dates before the next scheduled date when terminated", () => {
+			const task = makeTask({
+				recurrence: "DTSTART:20251001T090000Z;FREQ=DAILY;ENDONDONE=2",
+				scheduled: "2025-11-05",
+				complete_instances: ["2025-11-02", "2025-11-04"],
+			});
+
+			const invalid = jest.fn();
+			const projection = new CalendarTaskProjection(makeContext(), invalid);
+			projection.setTasks([task]);
+			const entries = projection.entriesInRange({ start: "2025-11-01", end: "2025-11-08" });
+
+			// Recorded instances on dates before the next scheduled date (2025-11-05)
+			// remain visible: 11.2 and 11.4 show as completed/skipped pattern entries.
+			const dates = entries
+				.filter((e) => e.recurringKind && e.start.slice(0, 10) < "2025-11-05")
+				.map((e) => e.start.slice(0, 10))
+				.sort();
+			expect(dates).toEqual(["2025-11-01", "2025-11-02", "2025-11-03", "2025-11-04"]);
+			// No entries on or after the next scheduled date.
+			expect(entries.every((e) => e.start.slice(0, 10) < "2025-11-05")).toBe(true);
+			expect(invalid).not.toHaveBeenCalled();
+		});
+
+		it("hides pattern and next-scheduled entries on or after the scheduled date for terminated tasks", () => {
+			const task = makeTask({
+				recurrence: "DTSTART:20251001T090000Z;FREQ=DAILY;ENDONDONE=2",
+				scheduled: "2025-11-05",
+				complete_instances: ["2025-11-02", "2025-11-04"],
+			});
+
+			const invalid = jest.fn();
+			const projection = new CalendarTaskProjection(makeContext(), invalid);
+			projection.setTasks([task]);
+			const entries = projection.entriesInRange({ start: "2025-11-01", end: "2025-11-08" });
+
+			// No next-scheduled entry at 11.05
+			expect(entries.some((e) => e.recurringKind === "next-scheduled")).toBe(false);
+			// No pattern entry on or after 11.05
+			expect(
+				entries.some(
+					(e) =>
+						e.recurringKind === "pattern" && e.start.slice(0, 10) >= "2025-11-05"
+				)
+			).toBe(false);
+		});
 	});
-});
