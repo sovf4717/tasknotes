@@ -28,12 +28,12 @@ import { TaskNotesSettings } from "./types/settings";
 import { generateBasesFileTemplate } from "./templates/defaultBasesFiles";
 import {
 	MINI_CALENDAR_VIEW_TYPE,
+	RecurringCompletionOptions,
 	TaskInfo,
 	EVENT_DATA_CHANGED,
 	EVENT_TASK_UPDATED,
 	EVENT_DATE_CHANGED,
 } from "./types";
-import { navigateAllCalendarsToDailyNote } from "./bases/calendarViewRegistry";
 
 import { TaskCreationModal } from "./modals/TaskCreationModal";
 import { TaskEditModal } from "./modals/TaskEditModal";
@@ -41,7 +41,6 @@ import { openTaskSelector } from "./modals/TaskSelectorWithCreateModal";
 import { ProjectSelectModal } from "./modals/ProjectSelectModal";
 import { PomodoroService } from "./services/PomodoroService";
 import { formatTime, getActiveTimeEntry } from "./utils/helpers";
-import { format } from "date-fns";
 import { convertUTCToLocalCalendarDate } from "./utils/dateUtils";
 import { TaskManager } from "./utils/TaskManager";
 import { DependencyCache } from "./utils/DependencyCache";
@@ -51,6 +50,7 @@ import { FieldMapper } from "./services/FieldMapper";
 import { StatusManager } from "./services/StatusManager";
 import { PriorityManager } from "./services/PriorityManager";
 import { TaskService } from "./services/TaskService";
+import { isMaterializedOccurrenceTask } from "@tasknotes/model/operations";
 import { FilterService } from "./services/FilterService";
 import { TaskStatsService } from "./services/TaskStatsService";
 import type { ViewPerformanceService } from "./services/ViewPerformanceService";
@@ -113,6 +113,7 @@ import {
 import { startDateChangeDetection } from "./bootstrap/dateChangeDetection";
 import { createTaskNotesLogger } from "./utils/tasknotesLogger";
 import { sanitizeLinkAliasText } from "./utils/linkAliasUtils";
+import { withPluginDataWriteLock } from "./utils/pluginDataWriteLock";
 import { TASKNOTES_RUNTIME_LIFECYCLE_RAW_EVENTS } from "./api/runtime-api";
 import {
 	createTaskNotesPerformanceProfiler,
@@ -154,9 +155,6 @@ export default class TaskNotesPlugin extends Plugin {
 
 	// Performance optimization utilities
 	requestDeduplicator: RequestDeduplicator;
-
-	// Tracks the last daily-note date (YYYY-MM-DD) so Bases calendar views can navigate to it.
-	lastDailyNoteDate: string | null = null;
 	predictivePrefetcher: PredictivePrefetcher;
 	domReconciler: DOMReconciler;
 	uiStateManager: UIStateManager;
@@ -360,22 +358,6 @@ export default class TaskNotesPlugin extends Plugin {
 		await initializePluginRuntime(this);
 		this.registerTaskNotesFileMenuActions();
 
-		// Navigate open calendar/agenda views to today's date when a diary note
-		// becomes the active leaf. Diary notes live in a diary folder and their
-		// filenames do not contain a date, so the current date is used.
-		this.registerEvent(
-			this.app.workspace.on("active-leaf-change", () => {
-				this.tryNavigateToDiaryNote();
-			})
-		);
-		// Also catch file opens (covers split-view cases where active-leaf-change
-		// may not fire for the diary file).
-		this.registerEvent(
-			this.app.workspace.on("file-open", () => {
-				this.tryNavigateToDiaryNote();
-			})
-		);
-
 		// Start migration check early (before views can be opened)
 		this.migrationPromise = this.performEarlyMigrationCheck();
 
@@ -394,53 +376,6 @@ export default class TaskNotesPlugin extends Plugin {
 		this.emitter.trigger(TASKNOTES_RUNTIME_LIFECYCLE_RAW_EVENTS.ready, {
 			timestamp: new Date().toISOString(),
 		});
-	}
-
-	/** Folder whose notes are treated as diary/daily notes. */
-	private static readonly DIARY_FOLDER_NAME = "\u65e5\u8bb0";
-
-	/** Matches daily notes named after their date, e.g. 2026-10-21. */
-	private static readonly DATED_NOTE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
-
-	/**
-	 * Check whether the active file is a daily note and navigate calendars to
-	 * its date. A file whose name is a date (2026-10-21) supplies that date;
-	 * files inside the diary folder supply today's date.
-	 */
-	private tryNavigateToDiaryNote(): void {
-		const activeFile = this.app.workspace.getActiveFile();
-		if (!activeFile) return;
-
-		const dateStr = this.resolveDailyNoteDate(activeFile.path);
-		if (!dateStr) return;
-
-		this.lastDailyNoteDate = dateStr;
-		navigateAllCalendarsToDailyNote(dateStr);
-	}
-
-	/**
-	 * Resolve the date a note stands for, or null when it is not a daily note.
-	 * Prefers a date in the filename. Falls back to today for notes inside the
-	 * diary folder, whose filenames may not contain a date.
-	 */
-	resolveDailyNoteDate(path: string): string | null {
-		const lastSlash = path.lastIndexOf("/");
-		const basename = path
-			.slice(lastSlash + 1)
-			.replace(/\.md$/i, "")
-			.trim();
-		const match = basename.match(TaskNotesPlugin.DATED_NOTE_PATTERN);
-		if (match) {
-			return `${match[1]}-${match[2]}-${match[3]}`;
-		}
-
-		return this.isDiaryNotePath(path) ? format(new Date(), "yyyy-MM-dd") : null;
-	}
-
-	isDiaryNotePath(path: string): boolean {
-		const segments = path.split("/");
-		segments.pop();
-		return segments.some((segment) => segment === TaskNotesPlugin.DIARY_FOLDER_NAME);
 	}
 
 	private registerTaskNotesFileMenuActions(): void {
@@ -954,12 +889,14 @@ export default class TaskNotesPlugin extends Plugin {
 			return;
 		}
 
-		const data = await this.loadPluginDataForSafeWrite("save-settings-data-only");
-		if (!data) {
-			return;
-		}
+		await withPluginDataWriteLock(this, async () => {
+			const data = await this.loadPluginDataForSafeWrite("save-settings-data-only");
+			if (!data) {
+				return;
+			}
 
-		await this.saveData(buildSettingsDataForSave(data, this.settings));
+			await this.saveData(buildSettingsDataForSave(data, this.settings));
+		});
 	}
 
 	async onExternalSettingsChange(): Promise<void> {
@@ -1307,13 +1244,6 @@ export default class TaskNotesPlugin extends Plugin {
 				confirmClearInstances,
 			});
 
-			if (property === "status") {
-				const statusValue = typeof value === "string" ? value : String(value);
-				if (this.statusManager.isCompletedStatus(statusValue) && !this.statusManager.isCompletedStatus(task.status || this.settings.defaultTaskStatus)) {
-					this.recordAgendaCompletionInActiveFile(updatedTask);
-				}
-			}
-
 			if (!options.silent && !cancelledByUser) {
 				if (property === "status") {
 					const statusValue = typeof value === "string" ? value : String(value);
@@ -1365,23 +1295,27 @@ export default class TaskNotesPlugin extends Plugin {
 	/**
 	 * Toggles a recurring task's completion status for the selected date
 	 */
-	async toggleRecurringTaskComplete(task: TaskInfo, date?: Date): Promise<TaskInfo> {
+	async toggleRecurringTaskComplete(
+		task: TaskInfo,
+		date?: Date,
+		options?: RecurringCompletionOptions
+	): Promise<TaskInfo> {
 		try {
 			const targetDate = await this.taskService.resolveRecurringTaskActionDate(task, date);
-			const { updatedTask, completed, undo } = await completeRecurringTaskWithUndo(
+			const { updatedTask, completed, changed, undo } = await completeRecurringTaskWithUndo(
 				this,
 				task,
-				targetDate
+				targetDate,
+				options
 			);
-			showRecurringCompletionNotice(
-				this,
-				updatedTask,
-				formatDateForStorage(targetDate),
-				completed,
-				undo
-			);
-			if (completed) {
-				this.recordAgendaCompletionInActiveFile(task);
+			if (changed) {
+				showRecurringCompletionNotice(
+					this,
+					updatedTask,
+					formatDateForStorage(targetDate),
+					completed,
+					undo
+				);
 			}
 			return updatedTask;
 		} catch (error) {
@@ -1426,9 +1360,6 @@ export default class TaskNotesPlugin extends Plugin {
 					status: uiData(configLabel(statusConfig) || updatedTask.status, "User-configured status label/value; never rewrite stored metadata"),
 				})
 			);
-			if (this.statusManager.isCompletedStatus(updatedTask.status) && !this.statusManager.isCompletedStatus(task.status || this.settings.defaultTaskStatus)) {
-				this.recordAgendaCompletionInActiveFile(updatedTask);
-			}
 			return updatedTask;
 		} catch (error) {
 			tasknotesLogger.error("Failed to toggle task status:", {
@@ -1955,6 +1886,46 @@ export default class TaskNotesPlugin extends Plugin {
 		}
 	}
 
+	async repeatCurrentTask(): Promise<void> {
+		try {
+			const taskInfo = await this.getCurrentTaskForCommand();
+			if (!taskInfo) {
+				return;
+			}
+			if (taskInfo.recurrence) {
+				new Notice(this.i18n.translate(msg({ message: "Recurring tasks already track each occurrence", context: "notices.commands.repeatRecurring" })));
+				return;
+			}
+			if (isMaterializedOccurrenceTask(taskInfo)) {
+				new Notice(this.i18n.translate(msg({ message: "This task is an occurrence of a recurring task", context: "notices.commands.repeatOccurrence" })));
+				return;
+			}
+			if (!this.statusManager.isCompletedStatus(taskInfo.status)) {
+				new Notice(this.i18n.translate(msg({ message: "Current task is not completed", context: "notices.commands.repeatNotCompleted" })));
+				return;
+			}
+
+			const { showConfirmationModal } = await import("./modals/ConfirmationModal");
+			const confirmed = await showConfirmationModal(this.app, {
+				title: this.i18n.translate(msg({ message: "Repeat current task", context: "commands.repeatCurrentTask" })),
+				message: this.i18n.translate(msg({ message: "Reopen this task, save its completion date and unarchive it? Body checkboxes will reset if enabled. You can edit dates afterwards; cancelling that editor will not undo these changes.", context: "commands.repeatCurrentTask.confirm" })),
+			});
+			if (!confirmed) {
+				return;
+			}
+
+			const repeatedTask = await this.taskService.repeatTask(taskInfo);
+			await this.openTaskEditModal(repeatedTask);
+		} catch (error) {
+			tasknotesLogger.error("Failed to repeat current task:", {
+				category: "persistence",
+				operation: "repeat-current-task",
+				error,
+			});
+			new Notice(this.i18n.translate(msg({ message: "Could not finish repeating task. Earlier changes were kept; check the task before trying again.", context: "notices.commands.repeatFailed" })));
+		}
+	}
+
 	async cycleCurrentTaskPriority(): Promise<void> {
 		try {
 			const taskInfo = await this.getCurrentTaskForCommand();
@@ -1973,39 +1944,6 @@ export default class TaskNotesPlugin extends Plugin {
 			});
 			new Notice(this.i18n.translate(msg({ message: "Failed to cycle task priority", context: "notices.commands.priorityCycleFailed" })));
 		}
-	}
-
-	/**
-	 * When a note containing `![[TaskNotes/Views/agenda-default.base]]` is the active
-	 * markdown file, record a compact completion marker above the embedded agenda view.
-	 */
-	private recordAgendaCompletionInActiveFile(task: TaskInfo): void {
-		const activeFile = this.app.workspace.getActiveFile();
-		if (!(activeFile instanceof TFile) || activeFile.extension !== "md") return;
-
-		const time = format(new Date(), "HH:mm");
-		const marker = `${time} ${task.title?.trim() || activeFile.basename}`;
-
-		void this.app.vault
-			.process(activeFile, (content) => {
-				const lines = content.split(/\r?\n/);
-				const embedIndex = lines.findIndex(
-					(line) => line.trimStart().startsWith("![[TaskNotes/Views/agenda-default.base")
-				);
-				if (embedIndex === -1) return content;
-
-				lines.splice(embedIndex, 0, marker);
-				const newline = content.includes("\r\n") ? "\r\n" : "\n";
-				return lines.join(newline);
-			})
-			.catch((error: unknown) => {
-				tasknotesLogger.warn("Failed to insert agenda completion marker", {
-					category: "persistence",
-					operation: "agenda-completion-marker",
-					details: { taskPath: task.path, activeFilePath: activeFile.path },
-					error,
-				});
-			});
 	}
 
 	private async getCurrentTaskForCommand(

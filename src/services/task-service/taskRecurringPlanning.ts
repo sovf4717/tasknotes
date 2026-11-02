@@ -34,6 +34,7 @@ export interface BuildRecurringTaskCompletePlanInput {
 	targetDate: Date;
 	currentTimestamp: string;
 	maintainDueDateOffsetInRecurring: boolean;
+	statusAfterOccurrence?: string;
 }
 
 export interface BuildRecurringTaskSkippedPlanInput {
@@ -41,6 +42,7 @@ export interface BuildRecurringTaskSkippedPlanInput {
 	targetDate: Date;
 	currentTimestamp: string;
 	maintainDueDateOffsetInRecurring: boolean;
+	statusAfterOccurrence?: string;
 }
 
 export interface RecurringTaskCompletePlan {
@@ -50,6 +52,7 @@ export interface RecurringTaskCompletePlan {
 	newComplete: boolean;
 	dateModified: string;
 	originalRecurrence: unknown;
+	originalStatus: unknown;
 }
 
 export interface RecurringTaskSkippedPlan {
@@ -58,6 +61,7 @@ export interface RecurringTaskSkippedPlan {
 	dateStr: string;
 	newSkipped: boolean;
 	dateModified: string;
+	originalStatus: unknown;
 }
 
 export interface ApplyRecurringTaskCompleteFrontmatterInput {
@@ -69,6 +73,7 @@ export interface ApplyRecurringTaskCompleteFrontmatterInput {
 	dueField: string;
 	recurrenceField: string;
 	recurrenceOriginalDateField?: string;
+	statusField?: string;
 	googleCalendarExceptionOriginalScheduledField: string;
 	googleCalendarMovedOriginalDatesField: string;
 	plan: RecurringTaskCompletePlan;
@@ -91,9 +96,24 @@ export interface ApplyRecurringTaskSkippedFrontmatterInput {
 	scheduledField: string;
 	dueField: string;
 	recurrenceOriginalDateField?: string;
+	statusField?: string;
 	googleCalendarExceptionOriginalScheduledField: string;
 	googleCalendarMovedOriginalDatesField: string;
 	plan: RecurringTaskSkippedPlan;
+}
+
+/**
+ * A series has one status, which describes its current occurrence. Once the
+ * series advances, a status set for that occurrence must not carry over.
+ */
+function applyStatusAfterOccurrence(
+	updatedTask: TaskInfo,
+	freshTask: TaskInfo,
+	statusAfterOccurrence: string | undefined
+): void {
+	if (statusAfterOccurrence && updatedTask.scheduled !== freshTask.scheduled) {
+		updatedTask.status = statusAfterOccurrence;
+	}
 }
 
 function getStringArray(value: unknown): string[] {
@@ -236,6 +256,7 @@ export function buildRecurringTaskCompletePlan({
 	targetDate,
 	currentTimestamp,
 	maintainDueDateOffsetInRecurring,
+	statusAfterOccurrence,
 }: BuildRecurringTaskCompletePlanInput): RecurringTaskCompletePlan {
 	if (!freshTask.recurrence) {
 		throw new Error("Task is not recurring");
@@ -347,6 +368,9 @@ export function buildRecurringTaskCompletePlan({
 		updatedTask,
 		!reopeningMovedOccurrence && Boolean(nextDates.scheduled)
 	);
+	if (newComplete) {
+		applyStatusAfterOccurrence(updatedTask, freshTask, statusAfterOccurrence);
+	}
 
 	return {
 		updatedTask,
@@ -355,6 +379,7 @@ export function buildRecurringTaskCompletePlan({
 		newComplete,
 		dateModified: currentTimestamp,
 		originalRecurrence: freshTask.recurrence,
+		originalStatus: freshTask.status,
 	};
 }
 
@@ -367,6 +392,7 @@ export function applyRecurringTaskCompleteFrontmatterChange({
 	dueField,
 	recurrenceField,
 	recurrenceOriginalDateField = "recurrence_original_date",
+	statusField = "status",
 	googleCalendarExceptionOriginalScheduledField,
 	googleCalendarMovedOriginalDatesField,
 	plan,
@@ -448,6 +474,10 @@ if (completedAtInstancesField) {
 		frontmatter[recurrenceField] = plan.updatedTask.recurrence;
 	}
 
+	if (plan.updatedTask.status !== plan.originalStatus) {
+		frontmatter[statusField] = plan.updatedTask.status;
+	}
+
 	if (plan.updatedTask.scheduled) {
 		frontmatter[scheduledField] = plan.updatedTask.scheduled;
 	}
@@ -480,6 +510,7 @@ export function buildRecurringTaskSkippedPlan({
 	targetDate,
 	currentTimestamp,
 	maintainDueDateOffsetInRecurring,
+	statusAfterOccurrence,
 }: BuildRecurringTaskSkippedPlanInput): RecurringTaskSkippedPlan {
 	if (!freshTask.recurrence) {
 		throw new Error("Task is not recurring");
@@ -548,6 +579,9 @@ export function buildRecurringTaskSkippedPlan({
 		updatedTask,
 		!reopeningMovedOccurrence && Boolean(nextDates.scheduled)
 	);
+	if (newSkipped) {
+		applyStatusAfterOccurrence(updatedTask, freshTask, statusAfterOccurrence);
+	}
 
 	return {
 		updatedTask,
@@ -555,6 +589,7 @@ export function buildRecurringTaskSkippedPlan({
 		dateStr,
 		newSkipped,
 		dateModified: currentTimestamp,
+		originalStatus: freshTask.status,
 	};
 }
 
@@ -566,6 +601,7 @@ export function applyRecurringTaskSkippedFrontmatterChange({
 	scheduledField,
 	dueField,
 	recurrenceOriginalDateField = "recurrence_original_date",
+	statusField = "status",
 	googleCalendarExceptionOriginalScheduledField,
 	googleCalendarMovedOriginalDatesField,
 	plan,
@@ -574,6 +610,10 @@ export function applyRecurringTaskSkippedFrontmatterChange({
 		frontmatter[skippedField] = [];
 	}
 	frontmatter[skippedField] = plan.updatedTask.skipped_instances || [];
+
+	if (plan.updatedTask.status !== plan.originalStatus) {
+		frontmatter[statusField] = plan.updatedTask.status;
+	}
 
 	if (!frontmatter[completeField]) {
 		frontmatter[completeField] = [];

@@ -757,6 +757,15 @@ export interface FieldMapping {
 	sortOrder: string; // Numeric ordering within column (lower = higher)
 }
 
+/**
+ * onlyIf is for callers acting on state read earlier, such as a queued drop. The
+ * occurrence is completed only if it holds for the task as the operation reads it,
+ * and a completed occurrence is never reopened.
+ */
+export interface RecurringCompletionOptions {
+	onlyIf?: (task: TaskInfo) => boolean;
+}
+
 export interface StatusConfig {
 	id: string; // Unique identifier
 	value: string; // What gets written to YAML
@@ -844,6 +853,9 @@ export interface ICSSubscription {
 	color: string;
 	enabled: boolean;
 	refreshInterval: number; // minutes (for remote) or check interval (for local)
+	authType?: "none" | "basic"; // HTTP auth for remote feeds; the password lives in SecretStorage
+	username?: string;
+	filter?: string; // Case-insensitive literal title substring; empty/missing shows all events
 }
 
 export interface ICSEvent {
@@ -931,7 +943,10 @@ export interface PendingAutoArchive {
 }
 
 export interface PendingGoogleCalendarDeletion {
+	/** Task path, or the daily note path when `timeblockId` is set */
 	taskPath: string;
+	/** Set when the event belongs to a daily-note timeblock rather than a task */
+	timeblockId?: string;
 	calendarId: string;
 	eventId: string;
 	createdAt: number;
@@ -945,6 +960,25 @@ export interface GoogleCalendarEventIndexEntry {
 	calendarId: string;
 	eventId: string;
 	updatedAt: number;
+}
+
+/** Links a daily-note timeblock to the Google Calendar event created for it */
+export interface GoogleCalendarTimeblockEventIndexEntry {
+	notePath: string;
+	timeblockId: string;
+	calendarId: string;
+	eventId: string;
+	/** Event payload last written to Google, used to skip unchanged timeblocks */
+	fingerprint: string;
+	updatedAt: number;
+}
+
+export interface PendingGoogleCalendarTimeblockSync {
+	notePath: string;
+	timeblockId: string;
+	requestedAt: number;
+	attempts: number;
+	lastError?: string;
 }
 
 export interface PendingGoogleCalendarSync {
