@@ -199,15 +199,51 @@ export class CalendarTaskProjection {
 	entriesInRange(range: CalendarRange): CalendarEntry[] {
 		const entries = this.index.entriesInRange(range);
 		if (this.terminatedTaskIds.size === 0) return entries;
-		return entries.filter((entry) => {
-			if (!this.terminatedTaskIds.has(entry.taskId)) return true;
-			const projected = this.tasks.get(entry.taskId)?.task;
-			const scheduled = projected?.scheduled;
-			if (!scheduled) return true;
-			// For terminated tasks, hide entries on or after the next scheduled
-			// date so that only past recorded instances remain visible.
-			return entry.start.slice(0, 10) < scheduled.slice(0, 10);
-		});
+		return entries
+			.map((entry) => {
+				if (!this.terminatedTaskIds.has(entry.taskId)) return entry;
+				const projected = this.tasks.get(entry.taskId)?.task;
+				const scheduled = projected?.scheduled;
+				if (!scheduled) return entry;
+				// For terminated tasks the model may emit a next-scheduled entry on
+				// the completion day because scheduled was not advanced. That entry
+				// shadows the recorded entry in the model's dedup pass, so re-tag it
+				// as recorded so the final instance stays visible in the agenda.
+				// Only re-tag when the day is an actually-completed instance; a
+				// next-scheduled entry on a day that was never completed is a
+				// forward-looking entry and must stay hidden.
+				const completeDays = new Set(projected?.complete_instances ?? []);
+				if (
+					entry.recurringKind === "next-scheduled" &&
+					completeDays.has(entry.start.slice(0, 10))
+				) {
+					return { ...entry, recurringKind: "recorded" as const };
+				}
+				// The model's dedup pass lets a pattern entry shadow a recorded entry
+				// on the same day. For terminated tasks, re-tag pattern entries that
+				// fall on a completed day so they render as recorded in the agenda.
+				if (
+					entry.recurringKind === "pattern" &&
+					completeDays.has(entry.start.slice(0, 10))
+				) {
+					return { ...entry, recurringKind: "recorded" as const };
+				}
+				return entry;
+			})
+			.filter((entry) => {
+				if (!this.terminatedTaskIds.has(entry.taskId)) return true;
+				const projected = this.tasks.get(entry.taskId)?.task;
+				const scheduled = projected?.scheduled;
+				if (!scheduled) return true;
+				const schedDay = scheduled.slice(0, 10);
+				const entryDay = entry.start.slice(0, 10);
+				// Recorded instances (including re-tagged next-scheduled) on or before
+				// the last scheduled date stay visible so the final completion shows
+				// in the agenda; pattern and forward-looking entries strictly past
+				// that date are hidden.
+				if (entry.recurringKind === "recorded") return entryDay <= schedDay;
+				return entryDay < schedDay;
+			});
 	}
 
 	clear(): void {
