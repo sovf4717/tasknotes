@@ -1,4 +1,4 @@
-import type { CompletedAtInstance, TaskInfo } from "../types";
+import type { CompletedAtInstance } from "../types/completedAtInstances";
 import { format } from "date-fns";
 import { formatDateForStorage } from "./dateUtils";
 
@@ -104,7 +104,7 @@ export function filterCompletedAtInstancesBefore(
  */
 export function formatCompletedAtTime(atValue: string): string {
 	const match = /^(?:\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(atValue.trim());
-return match ? match[1] : "";
+	return match ? match[1] : "";
 }
 
 /**
@@ -113,7 +113,10 @@ return match ? match[1] : "";
  * falling back to raw sources (e.g. the file's frontmatter).
  */
 export function getCompletedAtValueForDate(
-	task: Pick<TaskInfo, "completedAtInstances" | "customProperties"> | null | undefined,
+	task: {
+		completedAtInstances?: CompletedAtInstance[];
+		customProperties?: Record<string, unknown>;
+	} | null | undefined,
 	dateStr: string,
 	extraSources: readonly unknown[] = []
 ): string | undefined {
@@ -143,7 +146,10 @@ export function getCompletedAtValueForDate(
  * raw sources (e.g. the file's frontmatter) passed by the caller.
  */
 export function getCompletedAtTimeForDate(
-	task: Pick<TaskInfo, "completedAtInstances" | "customProperties"> | null | undefined,
+	task: {
+		completedAtInstances?: CompletedAtInstance[];
+		customProperties?: Record<string, unknown>;
+	} | null | undefined,
 	dateStr: string,
 	extraSources: readonly unknown[] = []
 ): string | undefined {
