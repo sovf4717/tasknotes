@@ -1,24 +1,73 @@
 /**
  * Sovf Extension for TaskNotes
- * New-file-only extension implementing sovf4717's features:
- * 1. completedAt: record local completion time when task is marked complete
- * 2. completedAtInstances: per-occurrence completion times for recurring tasks
- * 3. Insert "HH:mm task title" above ![[agenda-default.base]] in daily notes
+ * New-file-only extension implementing sovf4717's features.
+ * 
+ * This file is injected into main.js by build.ps1. It hooks into the
+ * plugin's onload method to listen for EVENT_TASK_UPDATED and:
+ * 1. Write completedAt / completedAtInstances to frontmatter on status change
+ * 2. Insert "HH:mm task title" above ![[agenda-default.base]] in daily notes
+ * 
+ * IMPORTANT: This file must NOT import from obsidian or any internal modules.
+ * It is compiled as a standalone script and appended to main.js where all
+ * needed references are already available in the module scope.
  */
 
-import { TFile } from "obsidian";
-import type TaskNotesPlugin from "./main";
-import type { TaskInfo } from "./types";
-import { EVENT_TASK_UPDATED } from "./types";
-import { getCurrentDateString } from "./utils/dateUtils";
+// We intentionally avoid importing from obsidian or ./main or ./types.
+// The extension is compiled as a plain script and appended to main.js.
+// At runtime, it accesses the plugin instance directly (passed to activateSovfExtension)
+// and uses only the obsidian APIs available via the plugin.app reference.
+
+type AnyTaskInfo = {
+	path: string;
+	title: string;
+	status: string;
+	recurrence?: string;
+	occurrence_date?: string;
+	complete_instances?: string[];
+	[key: string]: unknown;
+};
+
+type AnyPlugin = {
+	app: {
+		vault: {
+			getAbstractFileByPath(path: string): unknown;
+			read(file: unknown): Promise<string>;
+			modify(file: unknown, content: string): Promise<void>;
+			getMarkdownFiles(): Array<{ basename: string; path: string }>;
+		};
+		metadataCache: unknown;
+	};
+	emitter: {
+		on(event: string, cb: (data: unknown) => void): unknown;
+	};
+	registerEvent(ref: unknown): void;
+	statusManager: {
+		isCompletedStatus(status: string): boolean;
+	};
+	[key: string]: unknown;
+};
+
+const COMPLETED_AT = "completedAt";
+const COMPLETED_AT_INSTANCES = "completedAtInstances";
+const EVENT_TASK_UPDATED = "task-updated";
 
 interface CompletedAtInstance {
 	date: string;
 	at: string;
 }
 
-const COMPLETED_AT_INSTANCES = "completedAtInstances";
-const COMPLETED_AT = "completedAt";
+function getTodayString(): string {
+	const now = new Date();
+	const y = now.getFullYear();
+	const m = String(now.getMonth() + 1).padStart(2, "0");
+	const d = String(now.getDate()).padStart(2, "0");
+	return `${y}-${m}-${d}`;
+}
+
+function getCurrentDateTimeString(): string {
+	const now = new Date();
+	return getTodayString() + "T" + now.toTimeString().slice(0, 5);
+}
 
 function normalizeInstances(value: unknown): CompletedAtInstance[] {
 	if (!Array.isArray(value)) return [];
@@ -43,10 +92,10 @@ function upsertInstance(list: CompletedAtInstance[], dateStr: string, at: string
 	return list.sort((a, b) => a.date.localeCompare(b.date));
 }
 
-export function activateSovfExtension(plugin: TaskNotesPlugin): void {
+export function activateSovfExtension(plugin: AnyPlugin): void {
 	plugin.registerEvent(
 		plugin.emitter.on(EVENT_TASK_UPDATED, (data: unknown) => {
-			const event = data as { path?: string; originalTask?: TaskInfo; updatedTask?: TaskInfo };
+			const event = data as { originalTask?: AnyTaskInfo; updatedTask?: AnyTaskInfo };
 			if (!event?.updatedTask || !event?.originalTask) return;
 			const original = event.originalTask;
 			const updated = event.updatedTask;
@@ -61,19 +110,19 @@ export function activateSovfExtension(plugin: TaskNotesPlugin): void {
 }
 
 async function handleStatusTransition(
-	plugin: TaskNotesPlugin,
-	task: TaskInfo,
+	plugin: AnyPlugin,
+	task: AnyTaskInfo,
 	newlyCompleted: boolean
 ): Promise<void> {
 	try {
+		// Find the file - obsidian TFile check via constructor name
 		const file = plugin.app.vault.getAbstractFileByPath(task.path);
-		if (!(file instanceof TFile)) return;
+		if (!file || typeof file !== "object" || (file as unknown as { extension?: string }).extension !== "md") return;
 
-		const now = new Date();
-		const completedAtValue = `${getCurrentDateString()}T${now.toTimeString().slice(0, 5)}`;
-		const dateStr = getCurrentDateString();
+		const completedAtValue = getCurrentDateTimeString();
+		const dateStr = getTodayString();
 
-		const existingContent = await plugin.app.vault.read(file);
+		const existingContent = await plugin.app.vault.read(file as never);
 		const lines = existingContent.split("\n");
 		let frontmatterEnd = -1;
 		if (lines[0]?.trim() === "---") {
@@ -112,7 +161,7 @@ async function handleStatusTransition(
 
 		// completedAtInstances for recurring tasks
 		if (task.recurrence) {
-			const occurrenceDate = task.occurrence_date || dateStr;
+			const occurrenceDate = (task.occurrence_date as string) || dateStr;
 			let instances = normalizeInstances(fm[COMPLETED_AT_INSTANCES]);
 			if (newlyCompleted) {
 				instances = upsertInstance(instances, occurrenceDate, completedAtValue);
@@ -164,7 +213,7 @@ async function handleStatusTransition(
 
 		const bodyLines = lines.slice(frontmatterEnd + 1);
 		const newContent = [...newFmLines, ...bodyLines].join("\n");
-		await plugin.app.vault.modify(file, newContent);
+		await plugin.app.vault.modify(file as never, newContent);
 
 		if (newlyCompleted) {
 			await insertCompletionInDailyNote(plugin, task.title, completedAtValue);
@@ -175,17 +224,17 @@ async function handleStatusTransition(
 }
 
 async function insertCompletionInDailyNote(
-	plugin: TaskNotesPlugin,
+	plugin: AnyPlugin,
 	taskTitle: string,
 	completedAt: string
 ): Promise<void> {
 	try {
-		const today = getCurrentDateString();
+		const today = getTodayString();
 		const allFiles = plugin.app.vault.getMarkdownFiles();
 		const dailyNote = allFiles.find((f) => f.basename === today || f.basename.includes(today));
 		if (!dailyNote) return;
 
-		const content = await plugin.app.vault.read(dailyNote);
+		const content = await plugin.app.vault.read(dailyNote as never);
 		const lines = content.split("\n");
 		const timeStr = completedAt.substring(11, 16);
 		const entry = `- ${timeStr} ${taskTitle}`;
@@ -197,7 +246,7 @@ async function insertCompletionInDailyNote(
 		if (alreadyThere) return;
 
 		lines.splice(embedIdx, 0, entry);
-		await plugin.app.vault.modify(dailyNote, lines.join("\n"));
+		await plugin.app.vault.modify(dailyNote as never, lines.join("\n"));
 	} catch (error) {
 		console.warn("[TaskNotes Sovf Extension] daily note insert failed:", error);
 	}
